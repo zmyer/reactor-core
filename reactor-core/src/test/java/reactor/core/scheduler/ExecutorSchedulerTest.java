@@ -50,13 +50,12 @@ public class ExecutorSchedulerTest extends AbstractSchedulerTest {
 	}
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.fromExecutor(Runnable::run);
 	}
 
 	@Test
 	public void directAndWorkerTimeSchedulingRejected() {
-		Scheduler scheduler = scheduler();
 		Scheduler.Worker worker = scheduler.createWorker();
 		try {
 			assertThatExceptionOfType(RejectedExecutionException.class)

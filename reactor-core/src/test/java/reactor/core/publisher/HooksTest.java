@@ -659,7 +659,7 @@ public class HooksTest {
 				Runtime.getRuntime()
 				       .availableProcessors());
 
-			Scheduler scheduler = Schedulers.newParallel("test", ncpu);
+			Scheduler scheduler = Schedulers.newParallel("HooksTest-parallelModeFused", ncpu);
 
 			try {
 				Flux<Integer> result = ParallelFlux.from(source, ncpu)

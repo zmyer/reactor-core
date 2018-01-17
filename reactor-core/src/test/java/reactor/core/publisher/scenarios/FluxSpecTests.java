@@ -804,7 +804,7 @@ public class FluxSpecTests {
 //		"When a processor is streamed"
 //		given: "a source composable and a async downstream"
 		ReplayProcessor<Integer> source = ReplayProcessor.create();
-		Scheduler scheduler = Schedulers.newParallel("test", 2);
+		Scheduler scheduler = Schedulers.newParallel("FluxSpecTest-whenProcessorIsStreamed", 2);
 
 		try {
 			Mono<List<Integer>> res = source.subscribeOn(scheduler)

@@ -33,7 +33,7 @@ public class ExecutorSchedulerTrampolineTest extends AbstractSchedulerTest {
 	}
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.fromExecutor(Runnable::run, true);
 	}
 

@@ -15,14 +15,25 @@
  */
 package reactor.core.scheduler;
 
+import org.junit.After;
+
 /**
  * @author Stephane Maldini
  */
 public class SingleWorkerAroundTimerSchedulerTest extends AbstractSchedulerTest {
 
+	Scheduler workerSupplier;
+
 	@Override
-	protected Scheduler scheduler() {
-		return Schedulers.single(Schedulers.newSingle("singleWorkerTimer"));
+	protected Scheduler createScheduler() {
+		workerSupplier = Schedulers.newSingle("singleWorkerTimer");
+		Scheduler scheduler = Schedulers.single(workerSupplier);
+		return scheduler;
+	}
+
+	@After
+	public void workerSupplierDispose() {
+		workerSupplier.dispose();
 	}
 
 	@Override

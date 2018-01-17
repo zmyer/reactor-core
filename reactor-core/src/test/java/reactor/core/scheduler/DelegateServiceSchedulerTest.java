@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 public class DelegateServiceSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.fromExecutor(Executors.newSingleThreadScheduledExecutor());
 	}
 
@@ -50,43 +50,53 @@ public class DelegateServiceSchedulerTest extends AbstractSchedulerTest {
 	@Test
 	public void notScheduledRejects() {
 		Scheduler s = Schedulers.fromExecutorService(Executors.newSingleThreadExecutor());
-		assertThatExceptionOfType(RejectedExecutionException.class)
-				.isThrownBy(() -> s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct delayed scheduling")
-				.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
-		assertThatExceptionOfType(RejectedExecutionException.class)
-				.isThrownBy(() -> s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct periodic scheduling")
-				.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
+		try {
+			assertThatExceptionOfType(RejectedExecutionException.class)
+					.isThrownBy(() -> s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct delayed scheduling")
+					.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
+			assertThatExceptionOfType(RejectedExecutionException.class)
+					.isThrownBy(() -> s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct periodic scheduling")
+					.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
 
-		Worker w = s.createWorker();
-		assertThatExceptionOfType(RejectedExecutionException.class)
-				.isThrownBy(() -> w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker delayed scheduling")
-				.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
-		assertThatExceptionOfType(RejectedExecutionException.class)
-				.isThrownBy(() -> w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker periodic scheduling")
-				.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
+			Worker w = s.createWorker();
+			assertThatExceptionOfType(RejectedExecutionException.class)
+					.isThrownBy(() -> w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker delayed scheduling")
+					.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
+			assertThatExceptionOfType(RejectedExecutionException.class)
+					.isThrownBy(() -> w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker periodic scheduling")
+					.isSameAs(Exceptions.failWithRejectedNotTimeCapable());
+		}
+		finally {
+			s.dispose();
+		}
 	}
 
 	@Test
 	public void scheduledDoesntReject() {
 		Scheduler s = Schedulers.fromExecutorService(Executors.newSingleThreadScheduledExecutor());
-		assertThat(s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct delayed scheduling")
-				.isNotNull();
-		assertThat(s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct periodic scheduling")
-				.isNotNull();
+		try {
+			assertThat(s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct delayed scheduling")
+					.isNotNull();
+			assertThat(s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct periodic scheduling")
+					.isNotNull();
 
-		Worker w = s.createWorker();
-		assertThat(w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker delayed scheduling")
-				.isNotNull();
-		assertThat(w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker periodic scheduling")
-				.isNotNull();
+			Worker w = s.createWorker();
+			assertThat(w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker delayed scheduling")
+					.isNotNull();
+			assertThat(w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker periodic scheduling")
+					.isNotNull();
+		}
+		finally {
+			s.dispose();
+		}
 	}
 
 	@Test
@@ -124,22 +134,17 @@ public class DelegateServiceSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void smokeTestInterval() {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
-		try {
-			StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))
-			            .expectSubscription()
-			            .expectNoEvent(Duration.ofMillis(100))
-			            .expectNext(0L)
-			            .expectNoEvent(Duration.ofMillis(200))
-			            .expectNext(1L)
-			            .expectNoEvent(Duration.ofMillis(200))
-			            .expectNext(2L)
-			            .thenCancel();
-		}
-		finally {
-			s.dispose();
-		}
+		StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))
+		            .expectSubscription()
+		            .expectNoEvent(Duration.ofMillis(100))
+		            .expectNext(0L)
+		            .expectNoEvent(Duration.ofMillis(200))
+		            .expectNext(1L)
+		            .expectNoEvent(Duration.ofMillis(200))
+		            .expectNext(2L)
+		            .thenCancel();
 	}
 
 	@Test

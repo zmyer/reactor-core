@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 public class ImmediateSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.immediate();
 	}
 
@@ -58,7 +58,6 @@ public class ImmediateSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void directAndWorkerTimeSchedulingRejected() {
-		Scheduler scheduler = scheduler();
 		Worker worker = scheduler.createWorker();
 		try {
 			assertThatExceptionOfType(RejectedExecutionException.class)

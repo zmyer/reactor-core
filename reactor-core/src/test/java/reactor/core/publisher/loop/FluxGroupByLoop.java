@@ -29,6 +29,7 @@ public class FluxGroupByLoop {
 	public void twoGroupsLongAsyncMergeHiddenLoop() {
 		for (int i = 0; i < 100; i++) {
 			groupByTest.twoGroupsLongAsyncMergeHidden();
+			groupByTest.disposeResources();
 		}
 	}
 
@@ -36,6 +37,7 @@ public class FluxGroupByLoop {
 	public void twoGroupsLongAsyncMergeLoop() {
 		for (int i = 0; i < 100; i++) {
 			groupByTest.twoGroupsLongAsyncMerge();
+			groupByTest.disposeResources();
 		}
 	}
 

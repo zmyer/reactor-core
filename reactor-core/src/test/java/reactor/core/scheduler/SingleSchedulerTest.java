@@ -35,7 +35,7 @@ import reactor.test.StepVerifier;
 public class SingleSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.newSingle("SingleSchedulerTest");
 	}
 
@@ -47,7 +47,7 @@ public class SingleSchedulerTest extends AbstractSchedulerTest {
 	@Test
 	public void smokeTestDelay() {
 		for (int i = 0; i < 20; i++) {
-			Scheduler s = Schedulers.newSingle("test");
+			Scheduler s = Schedulers.newSingle("SingleSchedulerTest-smokeTestDelay");
 			AtomicLong start = new AtomicLong();
 			AtomicLong end = new AtomicLong();
 
@@ -79,7 +79,7 @@ public class SingleSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void smokeTestInterval() {
-		Scheduler s = Schedulers.newSingle("test");
+		Scheduler s = Schedulers.newSingle("SingleSchedulerTest-smokeTestInterval");
 
 		try {
 			StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))

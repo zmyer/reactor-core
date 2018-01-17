@@ -32,6 +32,7 @@ import org.junit.Test;
 import org.reactivestreams.Processor;
 import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
+import reactor.core.publisher.EventLoopProcessorTest;
 import reactor.core.publisher.TopicProcessor;
 import reactor.core.publisher.WorkQueueProcessor;
 import reactor.core.scheduler.Schedulers;
@@ -45,8 +46,8 @@ import static org.junit.Assert.assertTrue;
  * @author Stephane Maldini
  */
 public class ConsistentProcessorTests {
-	private Processor<String, String> processor;
-	private Processor<String, String> workProcessor;
+	private TopicProcessor<String> processor;
+	private WorkQueueProcessor<String> workProcessor;
 
 	@Test
 	@Ignore
@@ -115,7 +116,9 @@ public class ConsistentProcessorTests {
 	}
 
 	@After
-	public void clean() throws Exception {
+	public void clean() {
+		workProcessor.forceShutdown();
+		processor.forceShutdown();
 	}
 
 	@Test

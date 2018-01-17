@@ -17,6 +17,7 @@
 package reactor.core.publisher;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
@@ -34,6 +35,7 @@ import java.util.logging.Level;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.Condition;
 import org.hamcrest.CoreMatchers;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -59,6 +61,20 @@ import static reactor.util.concurrent.WaitStrategy.liteBlocking;
 /**
  */
 public class WorkQueueProcessorTest {
+
+
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			try {
+				runnable.run();
+			} catch (Throwable t) {
+				logger.warn("couldn't dispose a resource in @AfterClass", t);
+			}
+		}
+	}
 
 	static final Logger logger = Loggers.getLogger(WorkQueueProcessorTest.class);
 
@@ -94,8 +110,11 @@ public class WorkQueueProcessorTest {
 	/* see https://github.com/reactor/reactor-core/issues/199 */
 	@Test
 	public void fixedThreadPoolWorkQueueRejectsSubscribers() {
-		ExecutorService executorService = Executors.newFixedThreadPool(2);
+		ExecutorService executorService = Executors.newFixedThreadPool(2, task -> new Thread(task, "WorkQueueProcessorTest-fixedThreadPoolWorkQueueRejectsSubscribers"));
 		WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(executorService).bufferSize(16).build();
+		TO_DISPOSE.add(bc::forceShutdown);
+		TO_DISPOSE.add(executorService::shutdownNow);
+
 		CountDownLatch latch = new CountDownLatch(3);
 		TestWorkQueueSubscriber spec1 = new TestWorkQueueSubscriber(latch, "spec1");
 		TestWorkQueueSubscriber spec2 = new TestWorkQueueSubscriber(latch, "spec2");
@@ -128,6 +147,9 @@ public class WorkQueueProcessorTest {
 	public void forkJoinPoolWorkQueueRejectsSubscribers() {
 		ExecutorService executorService = Executors.newWorkStealingPool(2);
 		WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(executorService).bufferSize(16).build();
+		TO_DISPOSE.add(bc::forceShutdown);
+		TO_DISPOSE.add(executorService::shutdownNow);
+
 		CountDownLatch latch = new CountDownLatch(2);
 		TestWorkQueueSubscriber spec1 = new TestWorkQueueSubscriber(latch, "spec1");
 		TestWorkQueueSubscriber spec2 = new TestWorkQueueSubscriber(latch, "spec2");
@@ -163,13 +185,16 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(liteBlocking())
 				.build();
 		Scheduler timer = Schedulers.newSingle("Timer");
+		TO_DISPOSE.add(queueProcessor::forceShutdown);
+		TO_DISPOSE.add(timer::dispose);
+
 		queueProcessor.bufferTimeout(32, Duration.ofMillis(2), timer)
 		              .subscribe(new CoreSubscriber<List<String>>() {
 			              int counter;
 
 			              @Override
 			              public void onComplete() {
-				              System.out.println("Consumed in total: " + counter);
+				              logger.debug("Consumed in total: " + counter);
 			              }
 
 			              @Override
@@ -210,6 +235,7 @@ public class WorkQueueProcessorTest {
 	@Test(timeout = 15000L)
 	public void cancelDoesNotHang() throws Exception {
 		WorkQueueProcessor<String> wq = WorkQueueProcessor.create();
+		TO_DISPOSE.add(wq::forceShutdown);
 
 		Disposable d = wq.subscribe();
 
@@ -223,7 +249,8 @@ public class WorkQueueProcessorTest {
 
 	@Test(timeout = 15000L)
 	public void completeDoesNotHang() throws Exception {
-		WorkQueueProcessor<String> wq = WorkQueueProcessor.create();
+		WorkQueueProcessor<String> wq = WorkQueueProcessor.<String>builder().name("WorkQueueProcessorTest-completeDoesNotHang").build();
+		TO_DISPOSE.add(wq::forceShutdown);
 
 		wq.subscribe();
 
@@ -238,6 +265,7 @@ public class WorkQueueProcessorTest {
 	@Test(timeout = 15000L)
 	public void disposeSubscribeNoThreadLeak() throws Exception {
 		WorkQueueProcessor<String> wq = WorkQueueProcessor.<String>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 
 		Disposable d = wq.subscribe();
 		d.dispose();
@@ -254,6 +282,8 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberCold() throws Exception {
 		AtomicInteger errors = new AtomicInteger(3);
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
+
 		AtomicInteger onNextSignals = new AtomicInteger();
 		wq.onNext(1);
 		wq.onNext(2);
@@ -282,6 +312,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHot() throws Exception {
 		AtomicInteger errors = new AtomicInteger(3);
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.doOnNext(e -> onNextSignals.incrementAndGet()).<Integer>handle(
@@ -312,6 +343,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignal()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.doOnNext(e -> onNextSignals.incrementAndGet()).<Integer>handle(
@@ -342,6 +374,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignal2()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.log()
@@ -372,6 +405,7 @@ public class WorkQueueProcessorTest {
 	@Test()
 	public void retryNoThreadLeak() throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 
 		wq.handle((integer, sink) -> sink.error(new RuntimeException()))
 		  .retry(10)
@@ -389,6 +423,8 @@ public class WorkQueueProcessorTest {
 	public void simpleTest() throws Exception {
 		final TopicProcessor<Integer> sink = TopicProcessor.<Integer>builder().name("topic").build();
 		final WorkQueueProcessor<Integer> processor = WorkQueueProcessor.<Integer>builder().name("queue").build();
+		TO_DISPOSE.add(sink::forceShutdown);
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		int elems = 10000;
 		CountDownLatch latch = new CountDownLatch(elems);
@@ -421,7 +457,7 @@ public class WorkQueueProcessorTest {
 		}
 
 		latch.await(5, TimeUnit.SECONDS);
-		System.out.println("count " + count + " errors: " + errorCount);
+		logger.debug("count " + count + " errors: " + errorCount);
 		sink.onComplete();
 		Assert.assertTrue("Latch is " + latch.getCount(), latch.getCount() <= 1);
 	}
@@ -431,6 +467,11 @@ public class WorkQueueProcessorTest {
 	public void singleThreadWorkQueueDoesntRejectsSubscribers() {
 		ExecutorService executorService = Executors.newSingleThreadExecutor();
 		WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(executorService).bufferSize(2).build();
+		final ScheduledExecutorService executorService1 = Executors.newSingleThreadScheduledExecutor();
+		TO_DISPOSE.add(executorService::shutdownNow);
+		TO_DISPOSE.add(bc::forceShutdown);
+		TO_DISPOSE.add(executorService1::shutdownNow);
+
 		CountDownLatch latch = new CountDownLatch(1);
 		TestWorkQueueSubscriber spec1 = new TestWorkQueueSubscriber(latch, "spec1");
 		TestWorkQueueSubscriber spec2 = new TestWorkQueueSubscriber(latch, "spec2");
@@ -441,7 +482,7 @@ public class WorkQueueProcessorTest {
 		bc.onNext("foo");
 		bc.onNext("bar");
 
-		Executors.newSingleThreadScheduledExecutor()
+		executorService1
 		         .schedule(bc::onComplete, 200, TimeUnit.MILLISECONDS);
 		try {
 			bc.onNext("baz");
@@ -457,6 +498,11 @@ public class WorkQueueProcessorTest {
 	public void singleThreadWorkQueueSucceedsWithOneSubscriber() {
 		ExecutorService executorService = Executors.newSingleThreadExecutor();
 		WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(executorService).bufferSize(2).build();
+		final ScheduledExecutorService executorService1 = Executors.newSingleThreadScheduledExecutor();
+		TO_DISPOSE.add(executorService::shutdownNow);
+		TO_DISPOSE.add(bc::forceShutdown);
+		TO_DISPOSE.add(executorService1::shutdownNow);
+
 		CountDownLatch latch = new CountDownLatch(1);
 		TestWorkQueueSubscriber spec1 = new TestWorkQueueSubscriber(latch, "spec1");
 
@@ -465,7 +511,7 @@ public class WorkQueueProcessorTest {
 		bc.onNext("foo");
 		bc.onNext("bar");
 
-		Executors.newSingleThreadScheduledExecutor()
+		executorService1
 		         .schedule(bc::onComplete, 200, TimeUnit.MILLISECONDS);
 		bc.onNext("baz");
 
@@ -543,7 +589,7 @@ public class WorkQueueProcessorTest {
 
 		@Override
 		protected void hookOnNext(String value) {
-			System.out.println(id + " received: " + value);
+			logger.debug(id + " received: " + value);
 		}
 
 		@Override
@@ -553,7 +599,7 @@ public class WorkQueueProcessorTest {
 
 		@Override
 		protected void hookFinally(SignalType type) {
-			System.out.println(id + " finished with: " + type);
+			logger.debug(id + " finished with: " + type);
 			latch.countDown();
 		}
 	}
@@ -561,8 +607,8 @@ public class WorkQueueProcessorTest {
 	@Test
 	public void chainedWorkQueueProcessor() throws Exception{
 		ExecutorService es = Executors.newFixedThreadPool(2);
+		WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(es).bufferSize(16).build();
 		try {
-			WorkQueueProcessor<String> bc = WorkQueueProcessor.<String>builder().executor(es).bufferSize(16).build();
 
 			int elems = 18;
 			CountDownLatch latch = new CountDownLatch(elems);
@@ -576,6 +622,7 @@ public class WorkQueueProcessorTest {
 		}
 		finally {
 			es.shutdown();
+			bc.forceShutdown();
 		}
 	}
 
@@ -584,6 +631,7 @@ public class WorkQueueProcessorTest {
 
 		final int TEST_BUFFER_SIZE = 16;
 		WorkQueueProcessor<Object> processor = WorkQueueProcessor.builder().name("testProcessor").bufferSize(TEST_BUFFER_SIZE).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		assertEquals(TEST_BUFFER_SIZE, processor.getAvailableCapacity());
 
@@ -615,6 +663,7 @@ public class WorkQueueProcessorTest {
 			throws Exception {
 		AtomicInteger errors = new AtomicInteger(3);
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.log("wq", Level.FINE)
@@ -655,6 +704,7 @@ public class WorkQueueProcessorTest {
 			throws Exception {
 		AtomicInteger errors = new AtomicInteger(3);
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.publishOn(Schedulers.parallel(), 1)
@@ -694,6 +744,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignalPublishOn()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.publishOn(Schedulers.parallel())
@@ -730,6 +781,9 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignalParallel()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		Scheduler scheduler = Schedulers.newParallel("par", 4);
+		TO_DISPOSE.add(wq::forceShutdown); //TODO continue from here + look for Schedulers.new...
+		TO_DISPOSE.add(scheduler::dispose);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		Function<Flux<Integer>, Flux<Integer>> function =
@@ -744,7 +798,7 @@ public class WorkQueueProcessorTest {
 				            });
 
 		StepVerifier.create(wq.parallel(4)
-		                      .runOn(Schedulers.newParallel("par", 4))
+		                      .runOn(scheduler)
 		                      .transform(flux -> ParallelFlux.from(flux.groups()
 		                                                               .flatMap(s -> s.publish()
 		                                                                              .autoConnect()
@@ -778,6 +832,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignalPublishOnPrefetch1()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.publishOn(Schedulers.parallel(), 1)
@@ -814,6 +869,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignalFlatMap()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.publish()
@@ -857,6 +913,7 @@ public class WorkQueueProcessorTest {
 	public void retryErrorPropagatedFromWorkQueueSubscriberHotPoisonSignalFlatMapPrefetch1()
 			throws Exception {
 		WorkQueueProcessor<Integer> wq = WorkQueueProcessor.<Integer>builder().autoCancel(false).build();
+		TO_DISPOSE.add(wq::forceShutdown);
 		AtomicInteger onNextSignals = new AtomicInteger();
 
 		StepVerifier.create(wq.flatMap(i -> Mono.just(i)
@@ -900,6 +957,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(1)
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(broadcast::forceShutdown);
 
 		int simultaneousSubscribers = 3000;
 		CountDownLatch latch = new CountDownLatch(simultaneousSubscribers);
@@ -928,6 +986,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(1)
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(broadcast::forceShutdown);
 
 		int simultaneousSubscribers = 3000;
 		CountDownLatch latch = new CountDownLatch(simultaneousSubscribers);
@@ -955,6 +1014,7 @@ public class WorkQueueProcessorTest {
 		String expectedName = mainName + "[request-task]";
 
 		WorkQueueProcessor<Object> processor = WorkQueueProcessor.builder().name(mainName).bufferSize(8).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 
@@ -984,6 +1044,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(WaitStrategy.liteBlocking())
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 		processor.subscribe();
@@ -1015,6 +1076,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(WaitStrategy.liteBlocking())
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 		processor.subscribe();
@@ -1050,6 +1112,7 @@ public class WorkQueueProcessorTest {
 	@Test
 	public void createDefault() {
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.create();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, null, null, null);
 	}
 
@@ -1059,6 +1122,7 @@ public class WorkQueueProcessorTest {
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.<Integer>builder()
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, autoCancel, null, null);
 	}
 
@@ -1068,6 +1132,7 @@ public class WorkQueueProcessorTest {
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.<Integer>builder()
 				.name(name)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, null, null, null, null, null);
 	}
 
@@ -1076,6 +1141,7 @@ public class WorkQueueProcessorTest {
 		String name = "nameOverride";
 		int bufferSize = 1024;
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.create(name, bufferSize);
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, null, null, null, null);
 	}
 
@@ -1089,6 +1155,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, null, autoCancel, null, null);
 	}
 
@@ -1102,6 +1169,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, waitStrategy, null, null, null);
 	}
 
@@ -1117,6 +1185,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, waitStrategy, autoCancel, null, null);
 	}
 
@@ -1126,6 +1195,7 @@ public class WorkQueueProcessorTest {
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.<Integer>builder()
 				.executor(executor)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, null, executor, null);
 	}
 
@@ -1137,6 +1207,7 @@ public class WorkQueueProcessorTest {
 				.executor(executor)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, autoCancel, executor, null);
 	}
 
@@ -1148,6 +1219,7 @@ public class WorkQueueProcessorTest {
 				.executor(executor)
 				.bufferSize(bufferSize)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, null, null, executor, null);
 	}
 
@@ -1161,6 +1233,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, null, autoCancel, executor, null);
 	}
 
@@ -1174,6 +1247,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, waitStrategy, null, executor, null);
 	}
 
@@ -1189,6 +1263,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, waitStrategy, autoCancel, executor, null);
 	}
 
@@ -1206,6 +1281,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, waitStrategy, autoCancel, executor, requestTaskExecutor);
 	}
 
@@ -1216,6 +1292,7 @@ public class WorkQueueProcessorTest {
 				.share(true)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, autoCancel, null, null);
 	}
 
@@ -1224,6 +1301,7 @@ public class WorkQueueProcessorTest {
 		String name = "nameOverride";
 		int bufferSize = 1024;
 		WorkQueueProcessor<Integer> processor = WorkQueueProcessor.share(name, bufferSize);
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, null, null, null, null);
 	}
 
@@ -1238,6 +1316,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, waitStrategy, null, null, null);
 	}
 
@@ -1254,6 +1333,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, waitStrategy, autoCancel, null, null);
 	}
 
@@ -1264,6 +1344,7 @@ public class WorkQueueProcessorTest {
 				.share(true)
 				.executor(executor)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, null, executor, null);
 	}
 
@@ -1276,6 +1357,7 @@ public class WorkQueueProcessorTest {
 				.executor(executor)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, autoCancel, executor, null);
 	}
 
@@ -1288,6 +1370,7 @@ public class WorkQueueProcessorTest {
 				.executor(executor)
 				.bufferSize(bufferSize)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, null, null, executor, null);
 	}
 
@@ -1302,6 +1385,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, null, autoCancel, executor, null);
 	}
 
@@ -1316,6 +1400,7 @@ public class WorkQueueProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, null, executor, null);
 	}
 
@@ -1332,6 +1417,7 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, autoCancel, executor, null);
 	}
 
@@ -1350,12 +1436,14 @@ public class WorkQueueProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, autoCancel, executor, requestTaskExecutor);
 	}
 
 	@Test
 	public void scanProcessor() {
 		WorkQueueProcessor<String> test = WorkQueueProcessor.create("name", 16);
+		TO_DISPOSE.add(test::forceShutdown);
 		Subscription subscription = Operators.emptySubscription();
 		test.onSubscribe(subscription);
 
@@ -1427,6 +1515,7 @@ public class WorkQueueProcessorTest {
 	public void serializedSinkSingleProducer() throws Exception {
 		WorkQueueProcessor<Integer> queueProcessor = WorkQueueProcessor.<Integer>builder()
 				.share(false).build();
+		TO_DISPOSE.add(queueProcessor::forceShutdown);
 
 		FluxSink<Integer> sink = queueProcessor.sink();
 		Assertions.assertThat(sink).isInstanceOf(SerializedSink.class);
@@ -1442,6 +1531,8 @@ public class WorkQueueProcessorTest {
 		WorkQueueProcessor<Integer> queueProcessor = WorkQueueProcessor.<Integer>builder()
 				.share(true)
 				.build();
+		TO_DISPOSE.add(queueProcessor::forceShutdown);
+
 		TestSubscriber subscriber = new TestSubscriber(count);
 		queueProcessor.subscribe(subscriber);
 		FluxSink<Integer> sink = queueProcessor.sink();
@@ -1459,8 +1550,11 @@ public class WorkQueueProcessorTest {
 	public void serializedSinkMultiProducerWithOnRequest() throws Exception {
 		int count = 1000;
 		WorkQueueProcessor<Integer> queueProcessor = WorkQueueProcessor.<Integer>builder()
+				.name("WorkQueueProcessorTest-serializedSinkMultiProducerWithOnRequest")
 				.share(true)
 				.build();
+		TO_DISPOSE.add(queueProcessor::forceShutdown);
+
 		TestSubscriber subscriber = new TestSubscriber(count);
 		queueProcessor.subscribe(subscriber);
 		FluxSink<Integer> sink = queueProcessor.sink();

@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.assertj.core.api.Assertions;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 import org.reactivestreams.Publisher;
@@ -50,6 +51,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertTrue;
 
 public class ParallelFluxTest {
+
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			runnable.run();
+		}
+	}
 
 	@Test
 	public void sequentialMode() {
@@ -101,30 +111,25 @@ public class ParallelFluxTest {
 				       .availableProcessors());
 		for (int i = 1; i < ncpu + 1; i++) {
 
-			Scheduler scheduler = Schedulers.newParallel("test", i);
+			Scheduler scheduler = Schedulers.newParallel("ParallelFluxTest-parallelMode", i);
+			TO_DISPOSE.add(scheduler::dispose);
 
-			try {
-				Flux<Integer> result = ParallelFlux.from(source, i)
-				                                   .runOn(scheduler)
-				                                   .map(v -> v + 1)
-				                                   .sequential();
+			Flux<Integer> result = ParallelFlux.from(source, i)
+			                                   .runOn(scheduler)
+			                                   .map(v -> v + 1)
+			                                   .sequential();
 
-				AssertSubscriber<Integer> ts = AssertSubscriber.create();
+			AssertSubscriber<Integer> ts = AssertSubscriber.create();
 
-				result.subscribe(ts);
+			result.subscribe(ts);
 
-				ts.await(Duration.ofSeconds(10));
+			ts.await(Duration.ofSeconds(10));
 
-				ts.assertSubscribed()
-				  .assertValueCount(1_000_000)
-				  .assertComplete()
-				  .assertNoError();
-			}
-			finally {
-				scheduler.dispose();
-			}
+			ts.assertSubscribed()
+			  .assertValueCount(1_000_000)
+			  .assertComplete()
+			  .assertNoError();
 		}
-
 	}
 
 	@Test
@@ -135,30 +140,25 @@ public class ParallelFluxTest {
 				       .availableProcessors());
 		for (int i = 1; i < ncpu + 1; i++) {
 
-			Scheduler scheduler = Schedulers.newParallel("test", i);
+			Scheduler scheduler = Schedulers.newParallel("ParallelFluxTest-parallelModeFused", i);
+			TO_DISPOSE.add(scheduler::dispose);
 
-			try {
-				Flux<Integer> result = ParallelFlux.from(source, i)
-				                                   .runOn(scheduler)
-				                                   .map(v -> v + 1)
-				                                   .sequential();
+			Flux<Integer> result = ParallelFlux.from(source, i)
+			                                   .runOn(scheduler)
+			                                   .map(v -> v + 1)
+			                                   .sequential();
 
-				AssertSubscriber<Integer> ts = AssertSubscriber.create();
+			AssertSubscriber<Integer> ts = AssertSubscriber.create();
 
-				result.subscribe(ts);
+			result.subscribe(ts);
 
-				ts.await(Duration.ofSeconds(10));
+			ts.await(Duration.ofSeconds(10));
 
-				ts.assertSubscribed()
-				  .assertValueCount(1_000_000)
-				  .assertComplete()
-				  .assertNoError();
-			}
-			finally {
-				scheduler.dispose();
-			}
+			ts.assertSubscribed()
+			  .assertValueCount(1_000_000)
+			  .assertComplete()
+			  .assertNoError();
 		}
-
 	}
 
 	@Test
@@ -527,7 +527,8 @@ public class ParallelFluxTest {
 
 		Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
 		          .isThrownBy(() -> validSoFar.runOn(Schedulers.parallel(), 0))
-		          .withMessage("prefetch > 0 required but it was 0");
+		          .withMessage("prefetch > 0 required but it was 0")
+		          .withThreadDumpOnError();
 	}
 
 	@Test
@@ -913,8 +914,10 @@ public class ParallelFluxTest {
 
 
 	@Test
-	public void testParallelism() throws Exception
-	{
+	public void testParallelism() throws Exception {
+		Scheduler scheduler = Schedulers.newElastic("ParallelFluxTest-testParallelism");
+		TO_DISPOSE.add(scheduler::dispose);
+
 		Flux<Integer> flux = Flux.just(1, 2, 3);
 
 		Set<String> threadNames = Collections.synchronizedSet(new TreeSet<>());
@@ -926,7 +929,7 @@ public class ParallelFluxTest {
 				// Uncomment line below for failure
 				.cache(1)
 				.parallel(3)
-				.runOn(Schedulers.newElastic("TEST"))
+				.runOn(scheduler)
 				.subscribe(i ->
 				{
 					threadNames.add(Thread.currentThread()

@@ -20,8 +20,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.After;
+import org.junit.Before;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
@@ -35,14 +35,14 @@ public abstract class AbstractReactorTest {
 
 	protected final Map<Thread, AtomicLong> counters = new ConcurrentHashMap<>();
 
-	@BeforeClass
-	public static void loadEnv() {
-		ioGroup = Schedulers.newElastic("work");
-		asyncGroup = Schedulers.newParallel("parallel", 4);
+	@Before
+	public void loadEnv() {
+		ioGroup = Schedulers.newElastic("AbstractReactorTest-work");
+		asyncGroup = Schedulers.newParallel("AbstractReactorTest-parallel", 4);
 	}
 
-	@AfterClass
-	public static void closeEnv() {
+	@After
+	public void closeEnv() {
 		ioGroup.dispose();
 		asyncGroup.dispose();
 	}

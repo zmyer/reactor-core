@@ -60,7 +60,7 @@ public class ParallelMergeReduceTest {
 			     i++) {
 //                System.out.println("  " + i);
 
-				Scheduler scheduler = Schedulers.newParallel("test", i);
+				Scheduler scheduler = Schedulers.newParallel("ParallelMergeReduceTest-parallelReduceFull", i);
 
 				try {
 					AssertSubscriber<Long> ts = AssertSubscriber.create();

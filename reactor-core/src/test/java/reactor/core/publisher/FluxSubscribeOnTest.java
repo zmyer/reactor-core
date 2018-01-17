@@ -16,10 +16,13 @@
 package reactor.core.publisher;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 import org.reactivestreams.Publisher;
@@ -36,6 +39,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static reactor.core.publisher.FluxSink.OverflowStrategy.DROP;
 
 public class FluxSubscribeOnTest {
+
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			runnable.run();
+		}
+	}
 
 	/*@Test
 	public void constructors() {
@@ -185,6 +197,9 @@ public class FluxSubscribeOnTest {
 
 	@Test
 	public void scheduleRequestsByDefault() {
+		final Scheduler scheduler = Schedulers.newSingle("FluxSubscribeOnTest=scheduleRequestByDefault");
+		TO_DISPOSE.add(scheduler::dispose);
+
 		Flux<Integer> test = Flux.<Integer>create(sink -> {
 			for (int i = 1; i < 1001; i++) {
 				sink.next(i);
@@ -197,8 +212,8 @@ public class FluxSubscribeOnTest {
 			}
 			sink.complete();
 		}, DROP)
-		        .map(Flux.identityFunction()) //note the create is away from subscribeOn
-				.subscribeOn(Schedulers.newSingle("test")) //note there's no explicit parameter
+				.map(Flux.identityFunction()) //note the create is away from subscribeOn
+				.subscribeOn(scheduler) //note there's no explicit parameter
 				.publishOn(Schedulers.elastic());
 
 		StepVerifier.create(test)
@@ -265,6 +280,9 @@ public class FluxSubscribeOnTest {
 	public void gh507() {
 		Scheduler s = Schedulers.newSingle("subscribe");
 		Scheduler s2 = Schedulers.newParallel("receive");
+		TO_DISPOSE.add(s::dispose);
+		TO_DISPOSE.add(s2::dispose);
+
 
 		Flux.from((Publisher<String>) subscriber -> {
 			subscriber.onSubscribe(new Subscription() {

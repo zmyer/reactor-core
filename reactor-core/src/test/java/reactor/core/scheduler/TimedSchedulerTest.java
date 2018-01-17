@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class TimedSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.newSingle("TimedSchedulerTest");
 	}
 

@@ -56,9 +56,9 @@ public class SchedulersTest {
 
 	final static class TestSchedulers implements Schedulers.Factory {
 
-		final Scheduler      elastic  = Schedulers.Factory.super.newElastic(60, Thread::new);
-		final Scheduler      single   = Schedulers.Factory.super.newSingle(Thread::new);
-		final Scheduler      parallel =	Schedulers.Factory.super.newParallel(1, Thread::new);
+		final Scheduler      elastic  = Schedulers.Factory.super.newElastic(60, r -> new Thread(r, "TestSchedulers-elastic"));
+		final Scheduler      single   = Schedulers.Factory.super.newSingle(r -> new Thread(r, "TestSchedulers-single"));
+		final Scheduler      parallel =	Schedulers.Factory.super.newParallel(1, r -> new Thread(r, "TestSchedulers-parallel"));
 
 		TestSchedulers(boolean disposeOnInit) {
 			if (disposeOnInit) {
@@ -216,20 +216,28 @@ public class SchedulersTest {
 
 	@Test
 	public void testOverride() throws InterruptedException {
-
 		TestSchedulers ts = new TestSchedulers(true);
 		Schedulers.setFactory(ts);
 
-		Assert.assertEquals(ts.single, Schedulers.newSingle("unused"));
-		Assert.assertEquals(ts.elastic, Schedulers.newElastic("unused"));
-		Assert.assertEquals(ts.parallel, Schedulers.newParallel("unused"));
-
+		Scheduler single1 = Schedulers.newSingle("unused");
+		final Scheduler elastic = Schedulers.newElastic("unused");
+		final Scheduler parallel = Schedulers.newParallel("unused");
 		Schedulers.resetFactory();
+		Scheduler single2 = Schedulers.newSingle("unused");
 
-		Scheduler s = Schedulers.newSingle("unused");
-		s.dispose();
+		try {
+			Assert.assertEquals(ts.single, single1);
+			Assert.assertEquals(ts.elastic, elastic);
+			Assert.assertEquals(ts.parallel, parallel);
 
-		Assert.assertNotSame(ts.single, s);
+			Assert.assertNotSame(ts.single, single2);
+		}
+		finally {
+			single1.dispose();
+			single2.dispose();
+			elastic.dispose();
+			parallel.dispose();
+		}
 	}
 
 	@Test
@@ -240,23 +248,28 @@ public class SchedulersTest {
 		Scheduler cachedTimerOld = Schedulers.single();
 		Scheduler standaloneTimer = Schedulers.newSingle("standaloneTimer");
 
+		try {
+			Assert.assertNotSame(cachedTimerOld, standaloneTimer);
+			Assert.assertNotNull(cachedTimerOld.schedule(() -> {}));
+			Assert.assertNotNull(standaloneTimer.schedule(() -> {}));
 
-		Assert.assertNotSame(cachedTimerOld, standaloneTimer);
-		Assert.assertNotNull(cachedTimerOld.schedule(() -> {}));
-		Assert.assertNotNull(standaloneTimer.schedule(() -> {}));
+			Schedulers.setFactory(ts2);
+			Scheduler cachedTimerNew = Schedulers.newSingle("unused");
 
-		Schedulers.setFactory(ts2);
-		Scheduler cachedTimerNew = Schedulers.newSingle("unused");
-
-		Assert.assertEquals(cachedTimerNew, Schedulers.newSingle("unused"));
-		Assert.assertNotSame(cachedTimerNew, cachedTimerOld);
-		//assert that the old factory"s cached scheduler was shut down
-		Assertions.assertThatExceptionOfType(RejectedExecutionException.class)
-		          .isThrownBy(() -> cachedTimerOld.schedule(() -> {}));
-		//independently created schedulers are still the programmer"s responsibility
-		Assert.assertNotNull(standaloneTimer.schedule(() -> {}));
-		//new factory = new alive cached scheduler
-		Assert.assertNotNull(cachedTimerNew.schedule(() -> {}));
+			Assert.assertEquals(cachedTimerNew, Schedulers.newSingle("unused"));
+			Assert.assertNotSame(cachedTimerNew, cachedTimerOld);
+			//assert that the old factory"s cached scheduler was shut down
+			Assertions.assertThatExceptionOfType(RejectedExecutionException.class)
+			          .isThrownBy(() -> cachedTimerOld.schedule(() -> {}));
+			//independently created schedulers are still the programmer"s responsibility
+			Assert.assertNotNull(standaloneTimer.schedule(() -> {}));
+			//new factory = new alive cached scheduler
+			Assert.assertNotNull(cachedTimerNew.schedule(() -> {}));
+		}
+		finally {
+			cachedTimerOld.dispose();
+			standaloneTimer.dispose();
+		}
 	}
 
 	@Test
@@ -311,12 +324,12 @@ public class SchedulersTest {
 
 	@Test
 	public void testRejectingSingleScheduler() {
-		assertRejectingScheduler(Schedulers.newSingle("test"));
+		assertRejectingScheduler(Schedulers.newSingle("SchedulersTest-testRejectingSingleScheduler"));
 	}
 
 	@Test
 	public void testRejectingParallelScheduler() {
-		assertRejectingScheduler(Schedulers.newParallel("test"));
+		assertRejectingScheduler(Schedulers.newParallel("SchedulersTest-testRejectingParallelScheduler"));
 	}
 
 	@Test
@@ -444,6 +457,7 @@ public class SchedulersTest {
 			Assert.assertNotSame(t1, t2[0]);
 		} finally {
 			dispatcher.dispose();
+			serviceRB.dispose();
 		}
 	}
 
@@ -753,7 +767,7 @@ public class SchedulersTest {
 
 	@Test
 	public void restartParallel() {
-		restart(Schedulers.newParallel("test"));
+		restart(Schedulers.newParallel("SchedulersTest-restartParallel"));
 	}
 
 //	@Test
@@ -768,23 +782,28 @@ public class SchedulersTest {
 
 	@Test
 	public void restartSingle(){
-		restart(Schedulers.newSingle("test"));
+		restart(Schedulers.newSingle("SchedulersTest-restartSingle"));
 	}
 
 	void restart(Scheduler s){
-		Thread t = Mono.fromCallable(Thread::currentThread)
-		               .subscribeOn(s)
-		               .block();
+		try {
+			Thread t = Mono.fromCallable(Thread::currentThread)
+			               .subscribeOn(s)
+			               .block();
 
-		s.dispose();
-		s.start();
+			s.dispose();
+			s.start();
 
-		Thread t2 = Mono.fromCallable(Thread::currentThread)
-		                .subscribeOn(s)
-		                .block();
+			Thread t2 = Mono.fromCallable(Thread::currentThread)
+			                .subscribeOn(s)
+			                .block();
 
-		assertThat(t).isNotEqualTo(Thread.currentThread());
-		assertThat(t).isNotEqualTo(t2);
+			assertThat(t).isNotEqualTo(Thread.currentThread());
+			assertThat(t).isNotEqualTo(t2);
+		}
+		finally {
+			s.dispose();
+		}
 	}
 
 	@Test

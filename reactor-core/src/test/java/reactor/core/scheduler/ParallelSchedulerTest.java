@@ -36,13 +36,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ParallelSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.newParallel("ParallelSchedulerTest");
 	}
 
 	@Test(expected = IllegalArgumentException.class)
 	public void negativeParallelism() throws Exception {
-		Schedulers.newParallel("test", -1);
+		Schedulers.newParallel("ParallelSchedulerTest-negativeParallelism", -1);
 	}
 
 	@Override
@@ -52,7 +52,7 @@ public class ParallelSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void scheduledDoesntReject() {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
 		assertThat(s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
 				.describedAs("direct delayed scheduling")
@@ -73,7 +73,7 @@ public class ParallelSchedulerTest extends AbstractSchedulerTest {
 	@Test
 	public void smokeTestDelay() {
 		for (int i = 0; i < 20; i++) {
-			Scheduler s = Schedulers.newParallel("test");
+			Scheduler s = Schedulers.newParallel("ParallelSchedulerTest-smokeTestDelay");
 			AtomicLong start = new AtomicLong();
 			AtomicLong end = new AtomicLong();
 
@@ -104,22 +104,17 @@ public class ParallelSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void smokeTestInterval() {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
-		try {
-			StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))
-			            .expectSubscription()
-			            .expectNoEvent(Duration.ofMillis(100))
-			            .expectNext(0L)
-			            .expectNoEvent(Duration.ofMillis(200))
-			            .expectNext(1L)
-			            .expectNoEvent(Duration.ofMillis(200))
-			            .expectNext(2L)
-			            .thenCancel();
-		}
-		finally {
-			s.dispose();
-		}
+		StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))
+		            .expectSubscription()
+		            .expectNoEvent(Duration.ofMillis(100))
+		            .expectNext(0L)
+		            .expectNoEvent(Duration.ofMillis(200))
+		            .expectNext(1L)
+		            .expectNoEvent(Duration.ofMillis(200))
+		            .expectNext(2L)
+		            .thenCancel();
 	}
 
 	@Test
@@ -127,20 +122,25 @@ public class ParallelSchedulerTest extends AbstractSchedulerTest {
 		int n = 4;
 		int m = 25;
 
-		Scheduler scheduler = Schedulers.newParallel("test", n);
-		CountDownLatch latch = new CountDownLatch(m*n);
-		ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>();
+		Scheduler scheduler = Schedulers.newParallel("ParallelSchedulerTest-shouldPickEvenly", n);
+		try {
+			CountDownLatch latch = new CountDownLatch(m*n);
+			ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>();
 
-		for (int i = 0; i < m * n; i++) {
-			scheduler.schedule(() -> {
-				String threadName = Thread.currentThread().getName();
-				map.compute(threadName, (name, val) -> Optional.ofNullable(val).map(x -> x+1).orElse(1));
-				latch.countDown();
-			});
+			for (int i = 0; i < m * n; i++) {
+				scheduler.schedule(() -> {
+					String threadName = Thread.currentThread().getName();
+					map.compute(threadName, (name, val) -> Optional.ofNullable(val).map(x -> x+1).orElse(1));
+					latch.countDown();
+				});
+			}
+
+			latch.await();
+			assertThat(map.values()).containsOnly(m);
 		}
-
-		latch.await();
-		assertThat(map.values()).containsOnly(m);
+		finally {
+			scheduler.dispose();
+		}
 	}
 
 	@Test

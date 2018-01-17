@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -32,7 +33,20 @@ import static org.assertj.core.api.Assertions.*;
  */
 public abstract class AbstractSchedulerTest {
 
-	protected abstract Scheduler scheduler();
+	protected Scheduler scheduler;
+
+	@Before
+	public void schedulerInit() {
+		this.scheduler = createScheduler();
+	}
+
+	@After
+	public void schedulerDispose() {
+		if (scheduler != null) scheduler.dispose();
+		scheduler = null;
+	}
+
+	protected abstract Scheduler createScheduler();
 
 	protected boolean shouldCheckInterrupted(){
 		return false;
@@ -52,12 +66,12 @@ public abstract class AbstractSchedulerTest {
 
 	@Before
 	public void checkNotCached() {
-		assertThat(scheduler()).isNotInstanceOf(Schedulers.CachedScheduler.class);
+		assertThat(scheduler).isNotInstanceOf(Schedulers.CachedScheduler.class);
 	}
 
 	@Test(timeout = 10000)
 	final public void directScheduleAndDispose() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
 		try {
 			assertThat(s.isDisposed()).isFalse();
@@ -131,7 +145,7 @@ public abstract class AbstractSchedulerTest {
 
 	@Test(timeout = 10000)
 	final public void workerScheduleAndDispose() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 		try {
 			Scheduler.Worker w = s.createWorker();
 
@@ -222,7 +236,7 @@ public abstract class AbstractSchedulerTest {
 
 	@Test(timeout = 10000)
 	final public void directScheduleAndDisposeDelay() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
 		try {
 			assertThat(s.isDisposed()).isFalse();
@@ -268,7 +282,7 @@ public abstract class AbstractSchedulerTest {
 
 	@Test(timeout = 10000)
 	final public void workerScheduleAndDisposeDelay() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 		Scheduler.Worker w = s.createWorker();
 
 		try {
@@ -317,7 +331,7 @@ public abstract class AbstractSchedulerTest {
 
 	@Test(timeout = 10000)
 	final public void directScheduleAndDisposePeriod() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
 		try {
 			assertThat(s.isDisposed()).isFalse();
@@ -366,7 +380,7 @@ public abstract class AbstractSchedulerTest {
 
 	@Test(timeout = 10000)
 	final public void workerScheduleAndDisposePeriod() throws Exception {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 		Scheduler.Worker w = s.createWorker();
 
 		try {

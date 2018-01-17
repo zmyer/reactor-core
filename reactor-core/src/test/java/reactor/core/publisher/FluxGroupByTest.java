@@ -16,12 +16,21 @@
 
 package reactor.core.publisher;
 
+import java.lang.management.ManagementFactory;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
+import javax.management.JMX;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
+
+import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -29,6 +38,7 @@ import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
 import reactor.core.Fuseable;
 import reactor.core.Scannable;
+import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 import reactor.test.publisher.FluxOperatorTest;
@@ -39,6 +49,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class FluxGroupByTest extends
                              FluxOperatorTest<String, GroupedFlux<Integer, String>> {
+
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			runnable.run();
+		}
+	}
 
 	@Override
 	protected Scenario<String, GroupedFlux<Integer, String>> defaultScenarioOptions(Scenario<String, GroupedFlux<Integer, String>> defaultOptions) {
@@ -338,13 +357,15 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsLongAsyncMerge() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		Scheduler scheduler = Schedulers.newParallel("twoGroupsLongAsyncMerge");
+		TO_DISPOSE.add(scheduler::dispose);
+
 		AssertSubscriber<Integer> ts = AssertSubscriber.create();
 
 		Flux.range(1, 1_000_000)
 		    .groupBy(v -> (v & 1))
 		    .flatMap(g -> g)
-		    .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+		    .publishOn(scheduler)
 		    .subscribe(ts);
 
 		ts.await(Duration.ofSeconds(5));
@@ -356,13 +377,15 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsLongAsyncMergeHidden() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler scheduler = Schedulers.newParallel("twoGroupsLongAsyncMergeHidden");
+		TO_DISPOSE.add(scheduler::dispose);
+
 		AssertSubscriber<Integer> ts = AssertSubscriber.create();
 
 		Flux.range(1, 1_000_000)
 		    .groupBy(v -> (v & 1))
 		    .flatMap(g -> g.hide())
-		    .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+		    .publishOn(scheduler)
 		    .subscribe(ts);
 
 		ts.await(Duration.ofSeconds(5));
@@ -374,7 +397,8 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsConsumeWithSubscribe() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler scheduler = Schedulers.newParallel("twoGroupsConsumeWithSubscribe");
+		TO_DISPOSE.add(scheduler::dispose);
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts3 = AssertSubscriber.create();
@@ -391,11 +415,11 @@ public class FluxGroupByTest extends
 			    @Override
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					    t.publishOn(scheduler)
 					     .subscribe(ts1);
 				    }
 				    else {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					    t.publishOn(scheduler)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -431,7 +455,8 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsConsumeWithSubscribePrefetchSmaller() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler scheduler = Schedulers.newParallel("twoGroupsConsumeWithSubscribePrefetch");
+		TO_DISPOSE.add(scheduler::dispose);
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts3 = AssertSubscriber.create();
@@ -448,13 +473,11 @@ public class FluxGroupByTest extends
 			    @Override
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool),
-							    32)
+					    t.publishOn(scheduler, 32)
 					     .subscribe(ts1);
 				    }
 				    else {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool),
-							    32)
+					    t.publishOn(scheduler, 32)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -499,7 +522,8 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsConsumeWithSubscribePrefetchBigger() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler scheduler = Schedulers.newParallel("twoGroupsConsumeWithSubscribePrefetchBigger");
+		TO_DISPOSE.add(scheduler::dispose);
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts3 = AssertSubscriber.create();
@@ -516,13 +540,11 @@ public class FluxGroupByTest extends
 			    @Override
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool),
-							    1024)
+					    t.publishOn(scheduler, 1024)
 					     .subscribe(ts1);
 				    }
 				    else {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool),
-							    1024)
+					    t.publishOn(scheduler, 1024)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -567,7 +589,8 @@ public class FluxGroupByTest extends
 
 	@Test
 	public void twoGroupsConsumeWithSubscribeHide() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler scheduler = Schedulers.newParallel("twoGroupsConsumeWithSubscribeHide");
+		TO_DISPOSE.add(scheduler::dispose);
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts3 = AssertSubscriber.create();
@@ -585,12 +608,12 @@ public class FluxGroupByTest extends
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
 					    t.hide()
-					     .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					     .publishOn(scheduler)
 					     .subscribe(ts1);
 				    }
 				    else {
 					    t.hide()
-					     .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					     .publishOn(scheduler)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -624,10 +647,28 @@ public class FluxGroupByTest extends
 
 	}
 
+	public static interface DiagnosticCommand {
+		String threadPrint(String... args);
+
+		DiagnosticCommand local = ((Supplier<DiagnosticCommand>) () -> {
+			try {
+				MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+				ObjectName name = new ObjectName("com.sun.management",
+						"type", "DiagnosticCommand");
+				return JMX.newMBeanProxy(server, name, DiagnosticCommand.class);
+			} catch(MalformedObjectNameException e) {
+				throw new AssertionError(e);
+			}
+		}).get();
+	}
+
+	//TODO https://github.com/reactor/reactor-core/issues/1028
 	@Test
-	@Ignore("temporarily disabled, see gh-1028")
 	public void twoGroupsFullAsyncFullHide() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler schedulerMain = Schedulers.newParallel("twoGroupsFullAsyncFullHide-main");
+		final Scheduler schedulerGroups = Schedulers.newParallel("twoGroupsFullAsyncFullHide-groups");
+		TO_DISPOSE.add(schedulerMain::dispose);
+		TO_DISPOSE.add(schedulerGroups::dispose);
 
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
@@ -636,7 +677,7 @@ public class FluxGroupByTest extends
 
 		Flux.range(0, 1_000_000)
 		    .hide()
-		    .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+		    .publishOn(schedulerMain)
 		    .groupBy(v -> v & 1)
 		    .subscribe(new CoreSubscriber<GroupedFlux<Integer, Integer>>() {
 			    @Override
@@ -648,12 +689,12 @@ public class FluxGroupByTest extends
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
 					    t.hide()
-					     .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					     .publishOn(schedulerGroups)
 					     .subscribe(ts1);
 				    }
 				    else {
 					    t.hide()
-					     .publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					     .publishOn(schedulerGroups)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -669,9 +710,15 @@ public class FluxGroupByTest extends
 			    }
 		    });
 
-		ts1.await(Duration.ofSeconds(5));
-		ts2.await(Duration.ofSeconds(5));
-		ts3.await(Duration.ofSeconds(5));
+		try {
+
+			ts1.await(Duration.ofSeconds(5));
+			ts2.await(Duration.ofSeconds(5));
+			ts3.await(Duration.ofSeconds(5));
+		}
+		catch (Throwable t) {
+			throw new IllegalStateException(DiagnosticCommand.local.threadPrint(), t);
+		}
 
 		ts1.assertValueCount(500_000)
 		   .assertNoError()
@@ -684,20 +731,23 @@ public class FluxGroupByTest extends
 		ts3.assertNoValues()
 		   .assertNoError()
 		   .assertComplete();
-
 	}
 
+	//TODO https://github.com/reactor/reactor-core/issues/1028
 	@Test
-	@Ignore("temporarily disabled, see gh-1028")
 	public void twoGroupsFullAsync() {
-		ForkJoinPool forkJoinPool = new ForkJoinPool();
+		final Scheduler schedulerMain = Schedulers.newParallel("twoGroupsFullAsync-main");
+		final Scheduler schedulerGroups = Schedulers.newParallel("twoGroupsFullAsync-groups");
+		TO_DISPOSE.add(schedulerMain::dispose);
+		TO_DISPOSE.add(schedulerGroups::dispose);
+
 		AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 		AssertSubscriber<Integer> ts3 = AssertSubscriber.create();
 		ts3.onSubscribe(Operators.emptySubscription());
 
 		Flux.range(0, 1_000_000)
-		    .publishOn(Schedulers.fromExecutorService(forkJoinPool), 512)
+		    .publishOn(schedulerMain, 512)
 		    .groupBy(v -> v & 1)
 		    .subscribe(new CoreSubscriber<GroupedFlux<Integer, Integer>>() {
 			    @Override
@@ -708,11 +758,11 @@ public class FluxGroupByTest extends
 			    @Override
 			    public void onNext(GroupedFlux<Integer, Integer> t) {
 				    if (t.key() == 0) {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					    t.publishOn(schedulerGroups)
 					     .subscribe(ts1);
 				    }
 				    else {
-					    t.publishOn(Schedulers.fromExecutorService(forkJoinPool))
+					    t.publishOn(schedulerGroups)
 					     .subscribe(ts2);
 				    }
 			    }
@@ -728,9 +778,14 @@ public class FluxGroupByTest extends
 			    }
 		    });
 
-		ts1.await(Duration.ofSeconds(5));
-		ts2.await(Duration.ofSeconds(5));
-		ts3.await(Duration.ofSeconds(5));
+		try {
+			ts1.await(Duration.ofSeconds(5));
+			ts2.await(Duration.ofSeconds(5));
+			ts3.await(Duration.ofSeconds(5));
+		}
+		catch (Throwable t) {
+			throw new IllegalStateException(DiagnosticCommand.local.threadPrint(), t);
+		}
 
 		ts1.assertValueCount(500_000)
 		   .assertNoError()

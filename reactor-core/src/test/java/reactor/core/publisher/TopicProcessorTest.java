@@ -16,6 +16,8 @@
 package reactor.core.publisher;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.Condition;
+import org.junit.After;
 import org.junit.Test;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
@@ -47,17 +50,29 @@ import static org.junit.Assert.*;
  */
 public class TopicProcessorTest {
 
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			runnable.run();
+		}
+	}
+
 	@Test
 	public void createSmokeTest() {
 		//this build sequence has been reported as throwing an exception
 		// with JDK9 (see https://github.com/reactor/reactor-core/issues/881)
-		TopicProcessor.builder().share(true).build();
+		TopicProcessor processor = TopicProcessor.builder().share(true).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 	}
 
 
 	@Test
 	public void testShutdownSuccessfullAfterAllDataIsRequested() throws InterruptedException {
 		TopicProcessor<String> processor = TopicProcessor.<String>builder().name("processor").bufferSize(4).build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		Publisher<String>
 				publisher = Flux.fromArray(new String[] { "1", "2", "3", "4", "5" });
 		publisher.subscribe(processor);
@@ -81,6 +96,8 @@ public class TopicProcessorTest {
 	@Test
 	public void testForceShutdownWhileWaitingForRequest() throws InterruptedException {
 		TopicProcessor<String> processor = TopicProcessor.<String>builder().name("processor").bufferSize(4).build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		Publisher<String> publisher = Flux.fromArray(new String[] { "1", "2", "3", "4", "5" });
 		publisher.subscribe(processor);
 
@@ -99,6 +116,8 @@ public class TopicProcessorTest {
 	@Test
 	public void testForceShutdownWhileWaitingForInitialRequest() throws InterruptedException {
 		TopicProcessor<String> processor = TopicProcessor.<String>builder().name("processor").bufferSize(4).build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		Publisher<String> publisher = new CappedPublisher(2);
 		publisher.subscribe(processor);
 
@@ -153,6 +172,8 @@ public class TopicProcessorTest {
 	@Test
 	public void testForceShutdownWhileWaitingForMoreData() throws InterruptedException {
 		TopicProcessor<String> processor = TopicProcessor.<String>builder().name("processor").bufferSize(4).build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		Publisher<String> publisher = new CappedPublisher(2);
 		publisher.subscribe(processor);
 
@@ -171,6 +192,8 @@ public class TopicProcessorTest {
 	@Test
 	public void testForceShutdownAfterShutdown() throws InterruptedException {
 		TopicProcessor<String> processor = TopicProcessor.<String>builder().name("processor").bufferSize(4).build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		Publisher<String> publisher = Flux.fromArray(new String[] { "1", "2", "3", "4", "5" });
 		publisher.subscribe(processor);
 
@@ -203,6 +226,8 @@ public class TopicProcessorTest {
 	@Test
 	public void drainTest() throws Exception {
 		final TopicProcessor<Integer> sink = TopicProcessor.<Integer>builder().name("topic").build();
+		TO_DISPOSE.add(sink::forceShutdown);
+
 		sink.onNext(1);
 		sink.onNext(2);
 		sink.onNext(3);
@@ -246,6 +271,7 @@ public class TopicProcessorTest {
 		ExecutorService es = Executors.newFixedThreadPool(2);
 		try {
 			TopicProcessor<String> bc = TopicProcessor.<String>builder().executor(es).bufferSize(16).build();
+			TO_DISPOSE.add(bc::forceShutdown);
 
 			int elems = 100;
 			CountDownLatch latch = new CountDownLatch(elems);
@@ -264,9 +290,9 @@ public class TopicProcessorTest {
 
 	@Test
 	public void testTopicProcessorGetters() {
-
 		final int TEST_BUFFER_SIZE = 16;
 		TopicProcessor<Object> processor = TopicProcessor.builder().name("testProcessor").bufferSize(TEST_BUFFER_SIZE).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		assertEquals(TEST_BUFFER_SIZE, processor.getAvailableCapacity());
 
@@ -298,6 +324,7 @@ public class TopicProcessorTest {
 				.autoCancel(true)
 				.share(true)
 				.build();
+		TO_DISPOSE.add(broadcast::forceShutdown);
 
 		int simultaneousSubscribers = 3000;
 		CountDownLatch latch = new CountDownLatch(simultaneousSubscribers);
@@ -322,6 +349,7 @@ public class TopicProcessorTest {
 	@Test(timeout = 5_000)
 	public void testBufferSize1Created() throws Exception {
 		TopicProcessor<String> broadcast = TopicProcessor.<String>builder().name("share-name").bufferSize(1).autoCancel(true).build();
+		TO_DISPOSE.add(broadcast::forceShutdown);
 
 		int simultaneousSubscribers = 3000;
 		CountDownLatch latch = new CountDownLatch(simultaneousSubscribers);
@@ -349,6 +377,7 @@ public class TopicProcessorTest {
 		String expectedName = mainName + "[request-task]";
 
 		TopicProcessor<Object> processor = TopicProcessor.builder().name(mainName).bufferSize(8).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 
@@ -379,6 +408,7 @@ public class TopicProcessorTest {
 				.waitStrategy(WaitStrategy.liteBlocking())
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 
@@ -410,6 +440,7 @@ public class TopicProcessorTest {
 				.waitStrategy(WaitStrategy.liteBlocking())
 				.autoCancel(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 
 		processor.requestTask(Operators.cancelledSubscription());
 
@@ -446,6 +477,7 @@ public class TopicProcessorTest {
 	@Test
 	public void createDefault() {
 		TopicProcessor<Integer> processor = TopicProcessor.create();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, null, null, null);
 	}
 
@@ -453,6 +485,7 @@ public class TopicProcessorTest {
 	public void createOverrideAutoCancel() {
 		boolean autoCancel = false;
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder().autoCancel(autoCancel).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, autoCancel, null, null);
 	}
 
@@ -460,6 +493,7 @@ public class TopicProcessorTest {
 	public void createOverrideName() {
 		String name = "nameOverride";
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder().name(name).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, null, null, null, null, null);
 	}
 
@@ -468,6 +502,7 @@ public class TopicProcessorTest {
 		String name = "nameOverride";
 		int bufferSize = 1024;
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder().name(name).bufferSize(bufferSize).build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, null, null, null, null);
 	}
 
@@ -481,6 +516,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, null, autoCancel, null, null);
 	}
 
@@ -494,6 +530,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, waitStrategy, null, null, null);
 	}
 
@@ -509,6 +546,7 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, name, bufferSize, waitStrategy, autoCancel, null, null);
 	}
 
@@ -518,6 +556,7 @@ public class TopicProcessorTest {
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder()
 				.executor(executor)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, null, executor, null);
 	}
 
@@ -529,6 +568,7 @@ public class TopicProcessorTest {
 				.executor(executor)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, null, null, autoCancel, executor, null);
 	}
 
@@ -540,6 +580,7 @@ public class TopicProcessorTest {
 				.executor(executor)
 				.bufferSize(bufferSize)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, null, null, executor, null);
 	}
 
@@ -553,6 +594,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, null, autoCancel, executor, null);
 	}
 
@@ -581,6 +623,7 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, waitStrategy, autoCancel, executor, null);
 	}
 
@@ -598,6 +641,7 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, false, null, bufferSize, waitStrategy, autoCancel, executor, requestTaskExecutor);
 	}
 
@@ -608,6 +652,7 @@ public class TopicProcessorTest {
 				.share(true)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, autoCancel, null, null);
 	}
 
@@ -620,6 +665,7 @@ public class TopicProcessorTest {
 				.name(name)
 				.bufferSize(bufferSize)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, null, null, null, null);
 	}
 
@@ -634,6 +680,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, waitStrategy, null, null, null);
 	}
 
@@ -650,6 +697,7 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, name, bufferSize, waitStrategy, autoCancel, null, null);
 	}
 
@@ -660,6 +708,7 @@ public class TopicProcessorTest {
 				.share(true)
 				.executor(executor)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, null, executor, null);
 	}
 
@@ -672,6 +721,7 @@ public class TopicProcessorTest {
 				.executor(executor)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, null, null, autoCancel, executor, null);
 	}
 
@@ -684,6 +734,7 @@ public class TopicProcessorTest {
 				.executor(executor)
 				.bufferSize(bufferSize)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, null, null, executor, null);
 	}
 
@@ -698,6 +749,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, null, autoCancel, executor, null);
 	}
 
@@ -712,6 +764,7 @@ public class TopicProcessorTest {
 				.bufferSize(bufferSize)
 				.waitStrategy(waitStrategy)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, null, executor, null);
 	}
 
@@ -728,6 +781,7 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, autoCancel, executor, null);
 	}
 
@@ -746,12 +800,14 @@ public class TopicProcessorTest {
 				.waitStrategy(waitStrategy)
 				.autoCancel(autoCancel)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
 		assertProcessor(processor, true, null, bufferSize, waitStrategy, autoCancel, executor, requestTaskExecutor);
 	}
 
 	@Test
 	public void scanProcessor() {
 		TopicProcessor<String> test = TopicProcessor.create("name", 16);
+		TO_DISPOSE.add(test::forceShutdown);
 		Subscription subscription = Operators.emptySubscription();
 		test.onSubscribe(subscription);
 
@@ -850,6 +906,8 @@ public class TopicProcessorTest {
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder()
 				.share(false)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		FluxSink<Integer> sink = processor.sink();
 		assertThat(sink).isInstanceOf(SerializedSink.class);
 		sink = sink.next(1);
@@ -863,6 +921,8 @@ public class TopicProcessorTest {
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder()
 				.share(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		FluxSink<Integer> sink = processor.sink();
 		assertThat(sink).isNotInstanceOf(SerializedSink.class);
 		assertThat(sink.next(1)).isNotInstanceOf(SerializedSink.class);
@@ -873,6 +933,8 @@ public class TopicProcessorTest {
 		TopicProcessor<Integer> processor = TopicProcessor.<Integer>builder()
 				.share(true)
 				.build();
+		TO_DISPOSE.add(processor::forceShutdown);
+
 		FluxSink<Integer> sink = processor.sink();
 		FluxSink<Integer> serializedSink = sink.onRequest(n -> {
 			FluxSink<Integer> s = sink.next(1);

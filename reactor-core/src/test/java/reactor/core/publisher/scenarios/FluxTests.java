@@ -862,19 +862,24 @@ public class FluxTests extends AbstractReactorTest {
 	public void testParallelWithJava8StreamsInput() throws InterruptedException {
 		Scheduler supplier = Schedulers.newParallel("test-p", 2);
 
-		int max = ThreadLocalRandom.current()
-		                           .nextInt(100, 300);
-		CountDownLatch countDownLatch = new CountDownLatch(max);
+		try {
+			int max = ThreadLocalRandom.current()
+			                           .nextInt(100, 300);
+			CountDownLatch countDownLatch = new CountDownLatch(max);
 
-		Flux<Integer> worker = Flux.range(0, max)
-		                                 .publishOn(asyncGroup);
-		worker.parallel(2)
-		      .runOn(supplier)
-		      .map(v -> v)
-		      .subscribe(v -> countDownLatch.countDown());
+			Flux<Integer> worker = Flux.range(0, max)
+			                           .publishOn(asyncGroup);
+			worker.parallel(2)
+			      .runOn(supplier)
+			      .map(v -> v)
+			      .subscribe(v -> countDownLatch.countDown());
 
-		countDownLatch.await(10, TimeUnit.SECONDS);
-		Assert.assertEquals(0, countDownLatch.getCount());
+			countDownLatch.await(10, TimeUnit.SECONDS);
+			Assert.assertEquals(0, countDownLatch.getCount());
+		}
+		finally {
+			supplier.dispose();
+		}
 	}
 
 	@Test
@@ -1112,20 +1117,26 @@ public class FluxTests extends AbstractReactorTest {
 	public void fluxCreateDemoElasticScheduler() throws Exception {
 		final int inputCount = 1000;
 		final CountDownLatch latch = new CountDownLatch(inputCount);
-		Flux.create(
-				sink -> {
-					for (int i = 0; i < inputCount; i++) {
-						sink.next(i);
-					}
-					sink.complete();
-				}).
-				    subscribeOn(Schedulers.newSingle("production")).
-				    publishOn(Schedulers.elastic()).
-				    subscribe(i -> {
-					    LockSupport.parkNanos(100L);
-					    latch.countDown();
-				    });
-		latch.await();
+		final Scheduler productionScheduler = Schedulers.newSingle("production");
+		try {
+			Flux.create(
+					sink -> {
+						for (int i = 0; i < inputCount; i++) {
+							sink.next(i);
+						}
+						sink.complete();
+					}).
+					    subscribeOn(productionScheduler).
+					    publishOn(Schedulers.elastic()).
+					    subscribe(i -> {
+						    LockSupport.parkNanos(100L);
+						    latch.countDown();
+					    });
+			latch.await();
+		}
+		finally {
+			productionScheduler.dispose();
+		}
 	}
 
 	@Test

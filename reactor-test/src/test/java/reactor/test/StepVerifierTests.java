@@ -1866,7 +1866,7 @@ public class StepVerifierTests {
 	//see https://github.com/reactor/reactor-core/issues/959
 	@Test
 	public void assertNextWithSubscribeOnDirectProcessor() {
-		Scheduler scheduler = Schedulers.newElastic("test");
+		Scheduler scheduler = Schedulers.newElastic("assertNextWithSubscribeOnDirectProcessor");
 		DirectProcessor<Integer> processor = DirectProcessor.create();
 		Mono<Integer> doAction = Mono.fromSupplier(() -> 22)
 		                             .doOnNext(processor::onNext)
@@ -1887,7 +1887,7 @@ public class StepVerifierTests {
 		assertThatExceptionOfType(AssertionError.class)
 				.isThrownBy(
 						StepVerifier.create(Flux.just(1)
-						                        .subscribeOn(Schedulers.newSingle("test")))
+						                        .subscribeOn(Schedulers.newSingle("assertNextWithSubscribeOnJust")))
 						            .then(() -> System.out.println("foo"))
 						            .assertNext(v -> assertThat(v).isNull())
 						            .thenCancel()

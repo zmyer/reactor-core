@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
-import java.util.stream.Stream;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -54,6 +54,15 @@ import static reactor.core.Scannable.Attr;
  * @author Stephane Maldini
  */
 public class EmitterProcessorTest {
+
+	private static List<Runnable> TO_DISPOSE = new ArrayList<>();
+
+	@After
+	public void disposeResources() {
+		for (Runnable runnable : TO_DISPOSE) {
+			runnable.run();
+		}
+	}
 
 	@Test
 	public void testColdIdentityProcessor() throws InterruptedException {
@@ -658,6 +667,7 @@ public class EmitterProcessorTest {
 		CountDownLatch[] latches = new CountDownLatch[schedulers.length];
 		for (int i = 0; i < schedulers.length; i++) {
 			schedulers[i] = Schedulers.newSingle("scheduler" + i + '-');
+			TO_DISPOSE.add(schedulers[i]::dispose);
 			int expectedCount = i == 1 ? count * 2 : count;
 			latches[i] = new CountDownLatch(expectedCount);
 		}

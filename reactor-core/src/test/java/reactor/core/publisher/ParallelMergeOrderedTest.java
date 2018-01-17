@@ -41,7 +41,7 @@ public class ParallelMergeOrderedTest {
 
 		int notShuffled = 0;
 		for (int i = 0; i < LOOPS; i++) {
-			final Scheduler SCHEDULER = Schedulers.newParallel("test", PARALLELISM);
+			final Scheduler SCHEDULER = Schedulers.newParallel("ParallelMergeOrderedTest-reorderingByIndex", PARALLELISM);
 			final List<Integer> disordered = Collections.synchronizedList(new ArrayList<>());
 
 			List<Integer> reordered = Flux.fromIterable(ordered)

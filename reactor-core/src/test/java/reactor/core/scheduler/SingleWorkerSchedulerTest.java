@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class SingleWorkerSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.single(Schedulers.immediate());
 	}
 

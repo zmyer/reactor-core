@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.assertj.core.api.Condition;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -44,6 +45,11 @@ public class EventLoopProcessorTest {
 	@Before
 	public void initProcessor() {
 		test = initProcessor(Executors.newSingleThreadExecutor());
+	}
+
+	@After
+	public void teardownProcessor() {
+		test.forceShutdown();
 	}
 
 	private static EventLoopProcessor<String> initProcessor(ExecutorService executor) {

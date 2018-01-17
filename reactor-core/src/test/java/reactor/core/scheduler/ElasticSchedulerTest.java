@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ElasticSchedulerTest extends AbstractSchedulerTest {
 
 	@Override
-	protected Scheduler scheduler() {
+	protected Scheduler createScheduler() {
 		return Schedulers.newElastic("ElasticSchedulerTest");
 	}
 
@@ -46,7 +46,7 @@ public class ElasticSchedulerTest extends AbstractSchedulerTest {
 
 	@Test(expected = IllegalArgumentException.class)
 	public void negativeTime() throws Exception {
-		Schedulers.newElastic("test", -1);
+		Schedulers.newElastic("ElasticSchedulerTest-negativeTime", -1);
 	}
 
 	@Override
@@ -87,28 +87,33 @@ public class ElasticSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void scheduledDoesntReject() {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
-		assertThat(s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct delayed scheduling")
-				.isNotNull();
-		assertThat(s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("direct periodic scheduling")
-				.isNotNull();
+		try {
+			assertThat(s.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct delayed scheduling")
+					.isNotNull();
+			assertThat(s.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("direct periodic scheduling")
+					.isNotNull();
 
-		Scheduler.Worker w = s.createWorker();
-		assertThat(w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker delayed scheduling")
-				.isNotNull();
-		assertThat(w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
-				.describedAs("worker periodic scheduling")
-				.isNotNull();
+			Scheduler.Worker w = s.createWorker();
+			assertThat(w.schedule(() -> {}, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker delayed scheduling")
+					.isNotNull();
+			assertThat(w.schedulePeriodically(() -> {}, 100, 100, TimeUnit.MILLISECONDS))
+					.describedAs("worker periodic scheduling")
+					.isNotNull();
+		}
+		finally {
+			s.dispose();
+		}
 	}
 
 	@Test
 	public void smokeTestDelay() {
 		for (int i = 0; i < 20; i++) {
-			Scheduler s = Schedulers.newElastic("test");
+			Scheduler s = Schedulers.newElastic("ElasticSchedulerTest-smokeTestDelay");
 			AtomicLong start = new AtomicLong();
 			AtomicLong end = new AtomicLong();
 
@@ -139,7 +144,7 @@ public class ElasticSchedulerTest extends AbstractSchedulerTest {
 
 	@Test
 	public void smokeTestInterval() {
-		Scheduler s = scheduler();
+		Scheduler s = scheduler;
 
 		try {
 			StepVerifier.create(Flux.interval(Duration.ofMillis(100), Duration.ofMillis(200), s))
