@@ -40,9 +40,11 @@ import reactor.util.annotation.Nullable;
  * a {@link Predicate} on the values. The predicate can be used in several modes:
  * <ul>
  * <li>{@code Until}: A new window starts when the predicate returns true. The
- * element that just matched the predicate is the last in the previous window.</li>
+ * element that just matched the predicate is the last in the previous window, and the
+ * windows are not emitted before an inner element is pushed.</li>
  * <li>{@code UntilOther}: A new window starts when the predicate returns true. The
- * element that just matched the predicate is the first in the new window.</li>
+ * element that just matched the predicate is the first in the new window, which is
+ * emitted immediately.</li>
  * <li>{@code While}: A new window starts when the predicate stops matching. The
  * non-matching elements that delimit each window are simply discarded, and the
  * windows are not emitted before an inner element is pushed</li>
