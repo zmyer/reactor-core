@@ -18,6 +18,7 @@ package reactor.core.publisher;
 
 import java.util.Objects;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -181,23 +182,33 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 					groupQueueSupplier.get(),
 					this);
 			window = g;
-			queue.offer(g);
 		}
 
-		void offerNewWindow(@Nullable T emitInNewWindow) {
+		void newWindowImmediate(T emitInNewWindow) {
 			// if the main is cancelled, don't create new groups
 			if (cancelled == 0) {
 				WINDOW_COUNT.getAndIncrement(this);
 
-				WindowFlux<T> g = new WindowFlux<>(
-						groupQueueSupplier.get(), this);
-				if (emitInNewWindow != null) {
-					g.onNext(emitInNewWindow);
-				}
+				WindowFlux<T> g = new WindowFlux<>(groupQueueSupplier.get(), this);
+				g.onNext(emitInNewWindow);
 				window = g;
 
+				offerAndDrain(g, emitInNewWindow);
+			}
+		}
+		void newWindowDeferred() {
+			// if the main is cancelled, don't create new groups
+			if (cancelled == 0) {
+				WINDOW_COUNT.getAndIncrement(this);
+
+				window = new WindowFlux<>(groupQueueSupplier.get(), this);
+			}
+		}
+
+		void offerAndDrain(WindowFlux<T> g, @Nullable T dataSignal) {
+			if (g.deferred.compareAndSet(true, false)) {
 				if (!queue.offer(g)) {
-					onError(Operators.onOperatorError(this, Exceptions.failWithOverflow(Exceptions.BACKPRESSURE_ERROR_QUEUE_FULL), emitInNewWindow,
+					onError(Operators.onOperatorError(this, Exceptions.failWithOverflow(Exceptions.BACKPRESSURE_ERROR_QUEUE_FULL), dataSignal,
 							actual.currentContext()));
 					return;
 				}
@@ -223,21 +234,23 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 			}
 
 			if (mode == Mode.UNTIL && match) {
+				offerAndDrain(g, t);
 				g.onNext(t);
 				g.onComplete();
-				offerNewWindow(null);
+				newWindowDeferred();
 			}
 			else if (mode == Mode.UNTIL_CUT_BEFORE && match) {
 				g.onComplete();
-				offerNewWindow(t);
+				newWindowImmediate(t);
 			}
 			else if (mode == Mode.WHILE && !match) {
 				g.onComplete();
-				offerNewWindow(null);
+				newWindowDeferred();
 				//compensate for the dropped delimiter
 				s.request(1);
 			}
 			else {
+				offerAndDrain(g, t);
 				g.onNext(t);
 			}
 		}
@@ -245,6 +258,7 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 		@Override
 		public void onError(Throwable t) {
 			if (Exceptions.addThrowable(ERROR, this, t)) {
+				offerAndDrain(window, null);
 				done = true;
 				drain();
 			}
@@ -255,7 +269,7 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 
 		@Override
 		public void onComplete() {
-			if(done){
+			if(done) {
 				return;
 			}
 
@@ -545,11 +559,14 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 
 		int produced;
 
+		AtomicBoolean deferred;
+
 		WindowFlux(
 				Queue<T> queue,
 				WindowPredicateMain<T> parent) {
 			this.queue = queue;
 			this.parent = parent;
+			this.deferred = new AtomicBoolean(true);
 		}
 
 		@Override

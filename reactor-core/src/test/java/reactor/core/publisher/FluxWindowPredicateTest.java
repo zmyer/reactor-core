@@ -42,6 +42,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class FluxWindowPredicateTest extends
                                      FluxOperatorTest<String, Flux<String>> {
 
+	@Test
+	public void windowWhileNoEmptyWindows() {
+		Flux.just("ALPHA", "#", "BETA", "#")
+		    .windowWhile(s -> !"#".equals(s))
+		    .flatMap(Flux::collectList)
+		    .as(StepVerifier::create)
+		    .assertNext(w -> assertThat(w).containsExactly("ALPHA"))
+		    .assertNext(w -> assertThat(w).containsExactly("BETA"))
+		    .verifyComplete();
+	}
+
+	@Test
+	public void windowUntilNoEmptyWindows() {
+		Flux.just("ALPHA", "#", "BETA", "#")
+		    .windowUntil("#"::equals)
+		    .flatMap(Flux::collectList)
+		    .as(StepVerifier::create)
+		    .assertNext(w -> assertThat(w).containsExactly("ALPHA", "#"))
+		    .assertNext(w -> assertThat(w).containsExactly("BETA", "#"))
+		    .verifyComplete();
+	}
+
+	@Test
+	public void windowUntilCutBeforeNoEmptyWindows() {
+		Flux.just("ALPHA", "#", "BETA", "#")
+		    .windowUntil("#"::equals, true)
+		    .flatMap(Flux::collectList)
+		    .as(StepVerifier::create)
+		    .assertNext(w -> assertThat(w).containsExactly("ALPHA"))
+		    .assertNext(w -> assertThat(w).containsExactly("#", "BETA"))
+		    .assertNext(w -> assertThat(w).containsExactly("#"))
+		    .verifyComplete();
+	}
+
 	@Override
 	protected Scenario<String, Flux<String>> defaultScenarioOptions(Scenario<String, Flux<String>> defaultOptions) {
 		return defaultOptions.shouldAssertPostTerminateState(false)
@@ -55,7 +89,7 @@ public class FluxWindowPredicateTest extends
 		return Arrays.asList(
 				scenario(f -> f.windowUntil(t -> true, true, 1))
 						.prefetch(1)
-						.receive(s -> s.buffer().subscribe(b -> Assert.fail()),
+						.receive(
 								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(0))),
 								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(1))),
 								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(2)))),
@@ -66,17 +100,13 @@ public class FluxWindowPredicateTest extends
 				scenario(f -> f.windowUntil(t -> true))
 						.receive(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(0))),
 								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(1))),
-								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(2))),
-								s -> s.buffer().subscribe(b -> assertThat(b).isEmpty())),
+								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(2)))),
 
-//				scenario(f -> f.windowUntil(t -> true, false, 1))
-//						.prefetch(1)
-//						.verifier(step -> step.consumeNextWith(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(0))))
-//						                      .consumeNextWith(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(1))))
-//						                      .consumeNextWith(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(2))))
-//						                      .thenRequest(3)
-//						                      .consumeNextWith(s -> s.buffer().subscribe(b -> assertThat(b).isEmpty()))
-//						                      .verifyComplete()),
+				scenario(f -> f.windowUntil(t -> true, false, 1))
+						.prefetch(1)
+						.receive(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(0))),
+								s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(1))),
+						        s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(2)))),
 
 				scenario(f -> f.windowUntil(t -> false))
 						.receive(s -> s.buffer().subscribe(b -> assertThat(b).containsExactly(item(0), item(1), item(2))))
@@ -419,24 +449,21 @@ public class FluxWindowPredicateTest extends
 		StepVerifier.create(windowWhile.flatMap(Flux::materialize))
 		            .expectSubscription()
 		            .expectNoEvent(Duration.ofMillis(10))
-		            .then(() -> sp1.onNext(1)) //closes initial, open 2nd
-		            .expectNext(Signal.complete())
-		            .then(() -> sp1.onNext(2)) //closes second, open 3rd
-		            .expectNext(Signal.complete())
-		            .then(() -> sp1.onNext(3)) //emits 3
+		            .then(() -> sp1.onNext(1)) //closes initial empty, open 2nd
+		            .then(() -> sp1.onNext(2)) //closes second empty, open 3rd
+		            .then(() -> sp1.onNext(3)) //emits 3, lazy emit of first non-empty window
 		            .expectNext(Signal.next(3))
 		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(4)) //closes 3rd, open 4th
 		            .expectNext(Signal.complete())
-		            .then(() -> sp1.onNext(5)) //closes 4th, open 5th
-		            .expectNext(Signal.complete())
-		            .then(() -> sp1.onNext(6)) //emits 6
+		            .then(() -> sp1.onNext(5)) //closes 4th empty, open 5th
+		            .then(() -> sp1.onNext(6)) //emits 6, lazy emit of 5th
 		            .expectNext(Signal.next(6))
 		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(7)) //closes 5th, open 6th
 		            .expectNext(Signal.complete())
-		            .then(() -> sp1.onNext(8)) //closes 6th, open 7th
-		            .expectNext(Signal.complete())
+		            .then(() -> sp1.onNext(8)) //closes 6th empty, open 7th
+		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(9)) //emits 9
 		            .expectNext(Signal.next(9))
 		            .expectNoEvent(Duration.ofMillis(10))
@@ -458,25 +485,16 @@ public class FluxWindowPredicateTest extends
 		            .expectSubscription()
 		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(1))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(2))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(3))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(4))
-		            .expectNext(Signal.complete())
 		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(1))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(2))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(3))
-		            .expectNext(Signal.complete())
 		            .then(() -> sp1.onNext(4))
-		            .expectNext(Signal.complete()) //closing window opened by 3
 		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(sp1::onComplete)
-		            .expectNext(Signal.complete()) //closing window opened by 4
 		            .expectComplete()
 		            .verify(Duration.ofSeconds(1));
 		assertThat(sp1.hasDownstreams()).isFalse();
@@ -489,15 +507,16 @@ public class FluxWindowPredicateTest extends
 				sp1, Queues.small(), Queues.unbounded(), Queues.SMALL_BUFFER_SIZE,
 				i -> i % 3 == 0, Mode.WHILE);
 
-		StepVerifier.create(windowWhile.flatMap(Flux::materialize))
+		StepVerifier.create(windowWhile.flatMap(w -> w.log().materialize()))
 		            .expectSubscription()
 		            .then(() -> sp1.onNext(1))
-		            .expectNext(Signal.complete())
+		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(2))
-		            .expectNext(Signal.complete())
+		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onNext(3)) //at this point, new window, need another data to close it
 		            .then(() -> sp1.onNext(4))
 		            .expectNext(Signal.next(3), Signal.complete())
+		            .expectNoEvent(Duration.ofMillis(10))
 		            .then(() -> sp1.onError(new RuntimeException("forced failure")))
 		            //this is the error in the window:
 		            .expectNextMatches(signalErrorMessage("forced failure"))
@@ -515,7 +534,7 @@ public class FluxWindowPredicateTest extends
 		                        .windowWhile(s -> !s.equals("#"))
 		                        .flatMap(Flux::count)
 		)
-		            .expectNext(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
+//		            .expectNext(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
 		            .expectNext(2L)
 		            .verifyComplete();
 	}
@@ -526,8 +545,6 @@ public class FluxWindowPredicateTest extends
 		                        .repeat(10)
 		                        .windowWhile(s -> !s.equals("#"))
 		                        .flatMap(w -> w.count()))
-		            .expectNext(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
-		            .expectNext(0L) //"remainder" window
 	                .verifyComplete();
 	}
 
@@ -545,13 +562,13 @@ public class FluxWindowPredicateTest extends
 		StepVerifier.create(windowWhile.flatMap(Flux::materialize))
 					.expectSubscription()
 					.then(() -> sp1.onNext(1)) //empty window
-					.expectNext(Signal.complete())
 					.then(() -> sp1.onNext(2)) //empty window
-					.expectNext(Signal.complete())
 					.then(() -> sp1.onNext(3)) //window opens
 					.expectNext(Signal.next(3))
 					.then(() -> sp1.onNext(4)) //previous window closes, new (empty) window
 					.expectNext(Signal.complete())
+					.then(() -> sp1.onNext(3)) //window is emitted
+					.expectNext(Signal.next(3))
 					.then(() -> sp1.onNext(5)) //fails, the empty window receives onError
 					//error in the window:
 					.expectNextMatches(signalErrorMessage("predicate failure"))
@@ -599,7 +616,6 @@ public class FluxWindowPredicateTest extends
 		                        .windowUntil(s -> s.equals("#"), true)
 		                        .flatMap(Flux::materialize)
 		                        .map(sig -> sig.isOnComplete() ? "END" : sig.get()))
-	                .expectNext("END")
 	                .expectNext("#", "red", "green", "END")
 	                .verifyComplete();
 	}
@@ -610,7 +626,6 @@ public class FluxWindowPredicateTest extends
 		                        .windowWhile(s -> !s.equals("#"))
 		                        .flatMap(Flux::materialize)
 		                        .map(sig -> sig.isOnComplete() ? "END" : sig.get()))
-	                .expectNext("END")
 	                .expectNext("red", "green", "END")
 	                .verifyComplete();
 	}
@@ -706,8 +721,6 @@ public class FluxWindowPredicateTest extends
 						, 1)
 				.log("downstream", Level.FINE)
 			, StepVerifierOptions.create().checkUnderRequesting(false).initialRequest(1))
-		            .expectNextMatches(List::isEmpty)
-		            .thenRequest(1)
 		            .assertNext(l -> assertThat(l).containsExactly("1A", "1B", "1C"))
 		            .thenRequest(1)
 		            .assertNext(l -> assertThat(l).containsExactly("2A", "2B", "2C", "2D"))
@@ -736,7 +749,6 @@ public class FluxWindowPredicateTest extends
 						, 1)
 				.log("downstream", Level.FINE)
 		)
-		            .expectNextMatches(List::isEmpty)
 		            .assertNext(l -> assertThat(l).containsExactly("1A", "1B", "1C"))
 		            .assertNext(l -> assertThat(l).containsExactly("2A", "2B", "2C", "2D"))
 		            .assertNext(l -> assertThat(l).containsExactly("3A"))
