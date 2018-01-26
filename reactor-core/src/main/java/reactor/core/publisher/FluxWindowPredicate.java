@@ -233,8 +233,8 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 				return;
 			}
 
+			offerAndDrain(g, t);
 			if (mode == Mode.UNTIL && match) {
-				offerAndDrain(g, t);
 				g.onNext(t);
 				g.onComplete();
 				newWindowDeferred();
@@ -250,7 +250,6 @@ final class FluxWindowPredicate<T> extends FluxOperator<T, Flux<T>>
 				s.request(1);
 			}
 			else {
-				offerAndDrain(g, t);
 				g.onNext(t);
 			}
 		}
