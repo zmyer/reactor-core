@@ -21,8 +21,6 @@ import reactor.core.Fuseable;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 
-import static org.junit.Assert.assertTrue;
-
 public class MonoSubscribeOnValueTest {
 
 	@Test

@@ -23,8 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
-import org.assertj.core.api.Assertions;
-import org.junit.Assert;
 import org.junit.Test;
 import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
@@ -36,14 +34,14 @@ import reactor.test.StepVerifierOptions;
 import reactor.test.subscriber.AssertSubscriber;
 import reactor.util.context.Context;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.*;
 
 public class FluxDoOnEachTest {
 
-	@Test(expected = NullPointerException.class)
+	@Test
 	public void nullSource() {
-		new FluxDoOnEach<>(null, null);
+		assertThatNullPointerException()
+				.isThrownBy(() -> new FluxDoOnEach<>(null, null));
 	}
 
 	@Test
@@ -71,11 +69,11 @@ public class FluxDoOnEachTest {
 		    })
 		    .subscribe(ts);
 
-		Assert.assertEquals((Integer) 2, onNext.get());
-		Assert.assertNull(onError.get());
-		Assert.assertTrue(onComplete.get());
+		assertThat(onNext.get()).isEqualTo(2);
+		assertThat(onError.get()).isNull();
+		assertThat(onComplete.get()).isTrue();
 
-		Assert.assertEquals(2, state.intValue());
+		assertThat(state.intValue()).isEqualTo(2);
 	}
 
 
@@ -123,9 +121,9 @@ public class FluxDoOnEachTest {
 		    })
 		    .subscribe(ts);
 
-		Assert.assertNull(onNext.get());
-		Assert.assertTrue(onError.get() instanceof RuntimeException);
-		Assert.assertFalse(onComplete.get());
+		assertThat(onNext.get()).isNull();
+		assertThat(onError.get()).isInstanceOf(RuntimeException.class);
+		assertThat(onComplete.get()).isFalse();
 	}
 
 	@Test
@@ -153,9 +151,9 @@ public class FluxDoOnEachTest {
 		    })
 		    .subscribe(ts);
 
-		Assert.assertNull(onNext.get());
-		Assert.assertNull(onError.get());
-		Assert.assertTrue(onComplete.get());
+		assertThat(onNext.get()).isNull();
+		assertThat(onError.get()).isNull();
+		assertThat(onComplete.get()).isTrue();
 	}
 
 	@Test
@@ -183,9 +181,9 @@ public class FluxDoOnEachTest {
 		    })
 		    .subscribe(ts);
 
-		Assert.assertNull(onNext.get());
-		Assert.assertNull(onError.get());
-		Assert.assertFalse(onComplete.get());
+		assertThat(onNext.get()).isNull();
+		assertThat(onError.get()).isNull();
+		assertThat(onComplete.get()).isFalse();
 	}
 
 	@Test
@@ -206,7 +204,7 @@ public class FluxDoOnEachTest {
 
 		//nominal error path (DownstreamException)
 		ts.assertErrorMessage("test");
-		Assert.assertEquals(1, state.intValue());
+		assertThat(state.intValue()).isEqualTo(1);
 	}
 
 	@Test
@@ -226,11 +224,11 @@ public class FluxDoOnEachTest {
 			    })
 			    .subscribe(ts);
 
-			fail();
+			fail("");
 		}
 		catch (Exception e) {
-			Assert.assertTrue(Exceptions.unwrap(e) == err);
-			Assert.assertEquals(1, state.intValue());
+			assertThat(Exceptions.unwrap(e)).isSameAs(err);
+			assertThat(state.intValue()).isEqualTo(1);
 		}
 	}
 
@@ -251,7 +249,7 @@ public class FluxDoOnEachTest {
 		    .subscribe(ts);
 
 		ts.assertErrorMessage("test");
-		Assert.assertEquals(1, state.intValue());
+		assertThat(state.intValue()).isEqualTo(1);
 	}
 
 	@Test
@@ -275,7 +273,7 @@ public class FluxDoOnEachTest {
 		ts.assertError(IllegalStateException.class);
 		ts.assertErrorWith(e -> e.getSuppressed()[0].getMessage().equals("bar"));
 
-		Assert.assertEquals(1, state.intValue());
+		assertThat(state.intValue()).isEqualTo(1);
 	}
 
 	@Test

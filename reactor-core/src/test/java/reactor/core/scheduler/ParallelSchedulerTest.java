@@ -28,6 +28,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
  * @author Stephane Maldini
@@ -39,9 +40,10 @@ public class ParallelSchedulerTest extends AbstractSchedulerTest {
 		return Schedulers.newParallel("ParallelSchedulerTest");
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void negativeParallelism() throws Exception {
-		Schedulers.newParallel("test", -1);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> Schedulers.newParallel("test", -1));
 	}
 
 	@Override

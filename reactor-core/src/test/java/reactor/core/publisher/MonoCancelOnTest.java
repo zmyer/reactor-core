@@ -18,16 +18,16 @@ package reactor.core.publisher;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.junit.Assert;
 import org.junit.Test;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.subscriber.AssertSubscriber;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 public class MonoCancelOnTest {
 
-	@Test(timeout = 3000L)
+	@Test(timeout = 3000)
 	public void cancelOnDedicatedScheduler() throws Exception {
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<Thread> threadHash = new AtomicReference<>(Thread.currentThread());
 
@@ -45,6 +45,6 @@ public class MonoCancelOnTest {
 		    .cancel();
 
 		latch.await();
-		Assert.assertNull(threadHash.get());
+		assertThat(threadHash.get()).isNull();
 	}
 }

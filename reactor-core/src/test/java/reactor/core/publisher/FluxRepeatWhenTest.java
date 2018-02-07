@@ -30,13 +30,14 @@ import reactor.test.StepVerifier;
 import reactor.test.subscriber.AssertSubscriber;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 public class FluxRepeatWhenTest {
 
-	@Test(expected = NullPointerException.class)
+	@Test
 	public void whenFactoryNull() {
-		Flux.never()
-		    .repeatWhen(null);
+		assertThatNullPointerException()
+				.isThrownBy(() -> Flux.never().repeatWhen(null));
 	}
 
 	@Test

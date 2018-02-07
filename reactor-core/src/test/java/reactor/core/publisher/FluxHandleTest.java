@@ -23,7 +23,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 import org.reactivestreams.Subscription;
@@ -269,8 +268,8 @@ public class FluxHandleTest extends FluxOperatorTest<String, String> {
 		  .assertError(IllegalStateException.class)
 		  .assertNotComplete();
 
-		Assert.assertSame(throwableInOnOperatorError.get(), exception);
-		Assert.assertSame(dataInOnOperatorError.get(), data);
+		assertThat(throwableInOnOperatorError.get()).isSameAs(exception);
+		assertThat(dataInOnOperatorError.get()).isSameAs(data);
 	}
 
 	@Test
@@ -300,8 +299,8 @@ public class FluxHandleTest extends FluxOperatorTest<String, String> {
 		  .assertError(IllegalStateException.class)
 		  .assertNotComplete();
 
-		Assert.assertSame(throwableInOnOperatorError.get(), exception);
-		Assert.assertSame(dataInOnOperatorError.get(), data);
+		assertThat(throwableInOnOperatorError.get()).isSameAs(exception);
+		assertThat(dataInOnOperatorError.get()).isSameAs(data);
 	}
 
 	@Test
