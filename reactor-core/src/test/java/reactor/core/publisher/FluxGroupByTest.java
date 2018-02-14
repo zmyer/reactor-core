@@ -16,23 +16,14 @@
 
 package reactor.core.publisher;
 
-import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
-
-import javax.management.JMX;
-import javax.management.MBeanServer;
-import javax.management.MalformedObjectNameException;
-import javax.management.ObjectName;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
@@ -647,21 +638,6 @@ public class FluxGroupByTest extends
 
 	}
 
-	public static interface DiagnosticCommand {
-		String threadPrint(String... args);
-
-		DiagnosticCommand local = ((Supplier<DiagnosticCommand>) () -> {
-			try {
-				MBeanServer server = ManagementFactory.getPlatformMBeanServer();
-				ObjectName name = new ObjectName("com.sun.management",
-						"type", "DiagnosticCommand");
-				return JMX.newMBeanProxy(server, name, DiagnosticCommand.class);
-			} catch(MalformedObjectNameException e) {
-				throw new AssertionError(e);
-			}
-		}).get();
-	}
-
 	//TODO https://github.com/reactor/reactor-core/issues/1028
 	@Test
 	public void twoGroupsFullAsyncFullHide() {
@@ -710,15 +686,9 @@ public class FluxGroupByTest extends
 			    }
 		    });
 
-		try {
-
-			ts1.await(Duration.ofSeconds(5));
-			ts2.await(Duration.ofSeconds(5));
-			ts3.await(Duration.ofSeconds(5));
-		}
-		catch (Throwable t) {
-			throw new IllegalStateException(DiagnosticCommand.local.threadPrint(), t);
-		}
+		ts1.await(Duration.ofSeconds(5));
+		ts2.await(Duration.ofSeconds(5));
+		ts3.await(Duration.ofSeconds(5));
 
 		ts1.assertValueCount(500_000)
 		   .assertNoError()
@@ -778,14 +748,9 @@ public class FluxGroupByTest extends
 			    }
 		    });
 
-		try {
-			ts1.await(Duration.ofSeconds(5));
-			ts2.await(Duration.ofSeconds(5));
-			ts3.await(Duration.ofSeconds(5));
-		}
-		catch (Throwable t) {
-			throw new IllegalStateException(DiagnosticCommand.local.threadPrint(), t);
-		}
+		ts1.await(Duration.ofSeconds(5));
+		ts2.await(Duration.ofSeconds(5));
+		ts3.await(Duration.ofSeconds(5));
 
 		ts1.assertValueCount(500_000)
 		   .assertNoError()
