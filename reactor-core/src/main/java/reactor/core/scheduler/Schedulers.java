@@ -557,25 +557,7 @@ public abstract class Schedulers {
 
 		@Override
 		public Thread newThread(Runnable r) {
-			StringBuilder nameBuilder = new StringBuilder(name).append('-').append(COUNTER.incrementAndGet());
-			nameBuilder.append("\r\n");
-			for (StackTraceElement se :Thread.currentThread().getStackTrace()) {
-				String s = se.toString();
-				if (s.contains("sun.reflect.")) {
-					continue;
-				}
-				if (s.contains("junit.runners.")) {
-					continue;
-				}
-				if (s.contains("org.gradle.internal.")) {
-					continue;
-				}
-				if (s.contains("java.util.concurrent.ThreadPoolExecutor")) {
-					continue;
-				}
-				nameBuilder.append(s).append("\r\n");
-			}
-			Thread t = new Thread(r, nameBuilder.toString());
+			Thread t = new Thread(r, name + "-" + COUNTER.incrementAndGet());
 			t.setDaemon(daemon);
 			t.setUncaughtExceptionHandler(this);
 			return t;
