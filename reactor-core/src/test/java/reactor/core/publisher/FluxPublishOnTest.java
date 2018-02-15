@@ -966,7 +966,7 @@ public class FluxPublishOnTest extends FluxOperatorTest<String, String> {
 			    .publishOn(fromExecutorService(executor))
 			    .doOnNext(s -> {
 				    try {
-					    latch.await();
+					    latch.await(2, TimeUnit.SECONDS);
 				    }
 				    catch (InterruptedException e) {
 				    }
@@ -992,7 +992,6 @@ public class FluxPublishOnTest extends FluxOperatorTest<String, String> {
 	}
 
 	@Test
-	@Ignore //Fix or deprecate fromExecutor, this test might randomly hang on CI
 	public void rejectedExecutionExceptionOnErrorSignalExecutor()
 			throws InterruptedException {
 
@@ -1021,7 +1020,8 @@ public class FluxPublishOnTest extends FluxOperatorTest<String, String> {
 			    .publishOn(fromExecutorService(executor))
 			    .doOnNext(s -> {
 				    try {
-					    latch.await();
+					    latch.await(2, TimeUnit.SECONDS);
+
 				    }
 				    catch (InterruptedException e) {
 					    throw Exceptions.propagate(exception);
@@ -1049,7 +1049,6 @@ public class FluxPublishOnTest extends FluxOperatorTest<String, String> {
 	}
 
 	@Test(timeout = 5000)
-	@Ignore
 	public void rejectedExecutionExceptionOnDataSignalExecutorService()
 			throws InterruptedException {
 
@@ -1122,7 +1121,7 @@ public class FluxPublishOnTest extends FluxOperatorTest<String, String> {
 			    .publishOn(fromExecutorService(executor))
 			    .doOnNext(s -> {
 				    try {
-					    latch.await();
+					    latch.await(2, TimeUnit.SECONDS);
 				    }
 				    catch (InterruptedException e) {
 					    throw Exceptions.propagate(exception);
