@@ -42,7 +42,7 @@ import reactor.util.context.Context;
  *
  * @param <T> the value type
  */
-final class FluxCreate<T> extends Flux<T> {
+final class FluxCreate<T> extends Flux<T> implements Scannable {
 
 	enum CreateMode {
 		PUSH_ONLY, PUSH_PULL
@@ -97,6 +97,11 @@ final class FluxCreate<T> extends Flux<T> {
 			Exceptions.throwIfFatal(ex);
 			sink.error(Operators.onOperatorError(ex, actual.currentContext()));
 		}
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		return null; //no particular key to be represented, still useful in hooks
 	}
 
 	/**
@@ -284,6 +289,11 @@ final class FluxCreate<T> extends Flux<T> {
 
 			return sink.scanUnsafe(key);
 		}
+
+		@Override
+		public String toString() {
+			return sink.toString();
+		}
 	}
 
 	/**
@@ -359,6 +369,11 @@ final class FluxCreate<T> extends Flux<T> {
 		public FluxSink<T> onDispose(Disposable d) {
 			sink.onDispose(d);
 			return this;
+		}
+
+		@Override
+		public String toString() {
+			return baseSink.toString();
 		}
 	}
 
@@ -550,6 +565,11 @@ final class FluxCreate<T> extends Flux<T> {
 
 			return InnerProducer.super.scanUnsafe(key);
 		}
+
+		@Override
+		public String toString() {
+			return "FluxSink";
+		}
 	}
 
 	static final class IgnoreSink<T> extends BaseSink<T> {
@@ -575,6 +595,10 @@ final class FluxCreate<T> extends Flux<T> {
 			}
 		}
 
+		@Override
+		public String toString() {
+			return "FluxSink(" + OverflowStrategy.IGNORE + ")";
+		}
 	}
 
 	static abstract class NoOverflowBaseAsyncSink<T> extends BaseSink<T> {
@@ -614,6 +638,11 @@ final class FluxCreate<T> extends Flux<T> {
 			// nothing to do
 		}
 
+		@Override
+		public String toString() {
+			return "FluxSink(" + OverflowStrategy.DROP + ")";
+		}
+
 	}
 
 	static final class ErrorAsyncSink<T> extends NoOverflowBaseAsyncSink<T> {
@@ -625,6 +654,12 @@ final class FluxCreate<T> extends Flux<T> {
 		@Override
 		void onOverflow() {
 			error(Exceptions.failWithOverflow());
+		}
+
+
+		@Override
+		public String toString() {
+			return "FluxSink(" + OverflowStrategy.ERROR + ")";
 		}
 
 	}
@@ -771,6 +806,11 @@ final class FluxCreate<T> extends Flux<T> {
 
 			return super.scanUnsafe(key);
 		}
+
+		@Override
+		public String toString() {
+			return "FluxSink(" + OverflowStrategy.BUFFER + ")";
+		}
 	}
 
 	static final class LatestAsyncSink<T> extends BaseSink<T> {
@@ -914,6 +954,11 @@ final class FluxCreate<T> extends Flux<T> {
 			}
 
 			return super.scanUnsafe(key);
+		}
+
+		@Override
+		public String toString() {
+			return "FluxSink(" + OverflowStrategy.LATEST + ")";
 		}
 	}
 

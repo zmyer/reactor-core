@@ -19,7 +19,11 @@ import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 
 import reactor.core.CoreSubscriber;
+import reactor.core.Exceptions;
 import reactor.core.Fuseable;
+import reactor.core.Scannable;
+import reactor.util.Logger;
+import reactor.util.Loggers;
 
 /**
  * Emits the value or error produced by the wrapped CompletionStage.
@@ -29,9 +33,10 @@ import reactor.core.Fuseable;
  *
  * @param <T> the value type
  */
-final class MonoCompletionStage<T>
-extends Mono<T>
-        implements Fuseable {
+final class MonoCompletionStage<T> extends Mono<T>
+        implements Fuseable, Scannable {
+
+    static final Logger LOGGER = Loggers.getLogger(MonoCompletionStage.class);
 
     final CompletionStage<? extends T> future;
 
@@ -51,13 +56,24 @@ extends Mono<T>
         }
 
         future.whenComplete((v, e) -> {
-            if (e != null) {
-                actual.onError(e);
-            } else if (v != null) {
-                sds.complete(v);
-            } else {
-                actual.onComplete();
+            try {
+                if (e != null) {
+                    actual.onError(e);
+                } else if (v != null) {
+                    sds.complete(v);
+                } else {
+                    actual.onComplete();
+                }
+            }
+            catch (Throwable e1) {
+                Operators.onErrorDropped(e1, actual.currentContext());
+                throw Exceptions.bubble(e1);
             }
         });
+    }
+
+    @Override
+    public Object scanUnsafe(Attr key) {
+        return null; //no particular key to be represented, still useful in hooks
     }
 }

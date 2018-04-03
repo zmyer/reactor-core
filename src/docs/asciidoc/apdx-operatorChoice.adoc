@@ -6,7 +6,7 @@ is covered by a combination of operators, it is presented as a method call, with
 leading dot and parameters in parentheses, like this: `.methodCall(parameter)`.
 
 //TODO flux: cache, share, replay, publish, publishOn/subscribeOn/cancelOn
-//compose/transform, retryWhen, repeatWhen, sort, startWith
+//compose/transform, repeatWhen, sort, startWith
 //TODO Mono.sequenceEqual
 
 I want to deal with:
@@ -46,6 +46,7 @@ I want to deal with:
 ** a `CompletableFuture<T>`: `Mono#fromFuture`
 * that completes: `empty`
 * that errors immediately: `error`
+** ...but lazily build the `Throwable`: `error(Supplier<Throwable>)`
 * that never does anything: `never`
 * that is decided at subscription: `defer`
 * that depends on a disposable resource: `using`
@@ -59,7 +60,7 @@ I want to deal with:
 * I want to transform existing data:
 ** on a 1-to-1 basis (eg. strings to their length): `map`
 *** ...by just casting it: `cast`
-*** ...in order to materialize each source value's index: `Flux#indexed`
+*** ...in order to materialize each source value's index: `Flux#index`
 ** on a 1-to-n basis (eg. strings to their characters): `flatMap` + use a factory method
 ** on a 1-to-n basis with programmatic behavior for each source element and/or state: `handle`
 ** running an asynchronous task for each source item (eg. urls to http request): `flatMap` + an async `Publisher`-returning method
@@ -200,6 +201,7 @@ I want to deal with:
 ** ...to replace the completion of a successful `Flux`: `.concat(Flux.error(e))`
 ** ...to replace the *emission* of a successful `Mono`: `.then(Mono.error(e))`
 ** ...if too much time elapses between onNexts: `timeout`
+** ...lazily: `error(Supplier<Throwable>)`
 
 * I want the try/catch equivalent of:
 ** throwing: `error`
@@ -216,6 +218,7 @@ I want to deal with:
 *** to a `Publisher` or `Mono`, possibly different ones depending on the error: `Flux#onErrorResume` and `Mono#onErrorResume`
 ** by retrying: `retry`
 *** ...triggered by a companion control Flux: `retryWhen`
+*** ... using a standard backoff strategy (exponential backoff with jitter): `retryBackoff`
 
 * I want to deal with backpressure "errors"footnote:[request max from upstream and apply the strategy when downstream does not produce enough request]...
 ** by throwing a special `IllegalStateException`: `Flux#onBackpressureError`
@@ -271,6 +274,9 @@ TIP: Note that this returns a `Flux<GroupedFlux<K, T>>`, each inner `GroupedFlux
 
 [[which.blocking]]
 == Going Back to the Synchronous World
+Note: all of these methods except `Mono#toFuture` will throw an `UnsupportedOperatorException` if called from
+within a `Scheduler` marked as "non-blocking only" (by default `parallel()` and `single()`).
+
 * I have a `Flux<T>` and I want to:
 ** block until I can get the first element: `Flux#blockFirst`
 *** ...with a timeout: `Flux#blockFirst(Duration)`
