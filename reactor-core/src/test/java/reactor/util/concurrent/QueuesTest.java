@@ -16,6 +16,9 @@
 
 package reactor.util.concurrent;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -24,6 +27,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 public class QueuesTest {
 
@@ -77,12 +82,65 @@ public class QueuesTest {
 	}
 
 	@Test
+	public void capacityOneQueue() {
+		Queue q = Queues.one().get();
+
+		assertThat(Queues.capacity(q)).isEqualTo(1);
+	}
+
+
+	@Test
+	public void capacityEmptyQueue() {
+		Queue q = Queues.empty().get();
+
+		assertThat(Queues.capacity(q)).isZero();
+	}
+
+	@Test
 	public void capacityOtherQueue() {
 		Queue q = new PriorityQueue<>(10);
 
 		assertThat(Queues.capacity(q))
 				.isEqualTo(Integer.MIN_VALUE)
 				.isEqualTo(Queues.CAPACITY_UNSURE);
+	}
+
+	@Test
+	public void zeroQueueOperations() {
+		Queue<Integer> q = Queues.<Integer>empty().get();
+		List<Integer> vals = Arrays.asList(1, 2, 3);
+
+		assertThat(q.add(1)).as("add").isFalse();
+		assertThat(q.addAll(vals)).as("addAll").isFalse();
+		assertThat(q.offer(1)).as("offer").isFalse();
+
+		assertThat(q.peek()).as("peek").isNull();
+		assertThat(q.poll()).as("poll").isNull();
+		assertThat(q.contains(1)).as("contains").isFalse();
+		assertThat(q.iterator()).as("iterator").isEmpty();
+
+		assertThatExceptionOfType(NoSuchElementException.class)
+				.as("element")
+				.isThrownBy(q::element);
+		assertThatExceptionOfType(NoSuchElementException.class)
+				.as("remove")
+				.isThrownBy(q::remove);
+		assertThat(q.remove(1)).as("remove").isFalse();
+
+		assertThat(q.containsAll(vals)).as("containsAll").isFalse();
+		assertThat(q.retainAll(vals)).as("retainAll").isFalse();
+		assertThat(q.removeAll(vals)).as("removeAll").isFalse();
+
+		assertThatCode(q::clear).as("clear").doesNotThrowAnyException();
+		assertThat(q)
+				.hasSize(0)
+				.isEmpty();
+
+		assertThat(q.toArray()).as("toArray").isEmpty();
+		assertThat(q.toArray(new Integer[0])).as("toArray(empty)").isEmpty();
+
+		Integer[] array = new Integer[] { -1, -2, -3 };
+		assertThat(q.toArray(array)).as("toArray(pre-filled)").containsExactly(null, -2, -3);
 	}
 
 }

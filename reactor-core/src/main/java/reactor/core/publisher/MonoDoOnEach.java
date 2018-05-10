@@ -39,8 +39,6 @@ final class MonoDoOnEach<T> extends MonoOperator<T, T> {
 
 	@Override
 	public void subscribe(CoreSubscriber<? super T> actual) {
-		//TODO fuseable version?
-		//TODO conditional version?
-		source.subscribe(new FluxDoOnEach.DoOnEachSubscriber<>(actual, onSignal));
+		source.subscribe(FluxDoOnEach.createSubscriber(actual, onSignal, false));
 	}
 }

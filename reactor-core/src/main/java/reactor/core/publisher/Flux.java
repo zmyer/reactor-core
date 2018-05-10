@@ -72,6 +72,11 @@ import reactor.util.function.Tuples;
 /**
  * A Reactive Streams {@link Publisher} with rx operators that emits 0 to N elements, and then completes
  * (successfully or with an error).
+ * <p>
+ * The recommended way to learn about the {@link Flux} API and discover new operators is
+ * through the reference documentation, rather than through this javadoc (as opposed to
+ * learning more about individual operators). See the <a href="http://projectreactor.io/docs/core/release/reference/docs/index.html#which-operator">
+ * "which operator do I need?" appendix</a>.
  *
  * <p>
  * <img width="640" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/flux.png" alt="">
@@ -3675,6 +3680,9 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * @see Signal
 	 */
 	public final Flux<T> doOnEach(Consumer<? super Signal<T>> signalConsumer) {
+		if (this instanceof Fuseable) {
+			return onAssembly(new FluxDoOnEachFuseable<>(this, signalConsumer));
+		}
 		return onAssembly(new FluxDoOnEach<>(this, signalConsumer));
 	}
 
@@ -3971,9 +3979,9 @@ public abstract class Flux<T> implements Publisher<T> {
 	 *
 	 * @return a {@link Flux} that attempts to continue processing on errors.
 	 */
-	public final Flux<T> errorStrategyContinue(BiConsumer<Throwable, ? super T> errorConsumer) {
+	public final Flux<T> errorStrategyContinue(BiConsumer<Throwable, Object> errorConsumer) {
 		//this cast is ok as only T values will be propagated in this sequence
-		@SuppressWarnings("unchecked") BiConsumer<Throwable, Object> genericConsumer = (BiConsumer<Throwable, Object>) errorConsumer;
+		BiConsumer<Throwable, Object> genericConsumer = (BiConsumer<Throwable, Object>) errorConsumer;
 		return subscriberContext(Context.of(
 				OnNextFailureStrategy.KEY_ON_NEXT_ERROR_STRATEGY,
 				OnNextFailureStrategy.resume(genericConsumer)
@@ -3992,8 +4000,7 @@ public abstract class Flux<T> implements Publisher<T> {
 	 *
 	 * @return a {@link Flux} that attempts to continue processing on some errors.
 	 */
-	public final <E extends Throwable> Flux<T> errorStrategyContinue(Class<E> type,
-																	 BiConsumer<Throwable, ? super T> errorConsumer) {
+	public final <E extends Throwable> Flux<T> errorStrategyContinue(Class<E> type, BiConsumer<Throwable, Object> errorConsumer) {
 		return errorStrategyContinue(type::isInstance, errorConsumer);
 	}
 
@@ -4010,12 +4017,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * @return a {@link Flux} that attempts to continue processing on some errors.
 	 */
 	public final <E extends Throwable> Flux<T> errorStrategyContinue(Predicate<E> errorPredicate,
-																	 BiConsumer<Throwable, ? super T> errorConsumer) {
+																	 BiConsumer<Throwable, Object> errorConsumer) {
 		//this cast is ok as only T values will be propagated in this sequence
 		@SuppressWarnings("unchecked")
 		Predicate<Throwable> genericPredicate = (Predicate<Throwable>) errorPredicate;
-		@SuppressWarnings("unchecked")
-		BiConsumer<Throwable, Object> genericErrorConsumer = (BiConsumer<Throwable, Object>) errorConsumer;
+		BiConsumer<Throwable, Object> genericErrorConsumer = errorConsumer;
 		return subscriberContext(Context.of(
 				OnNextFailureStrategy.KEY_ON_NEXT_ERROR_STRATEGY,
 				OnNextFailureStrategy.resumeIf(genericPredicate, genericErrorConsumer)
@@ -4304,7 +4310,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	 *     (similar to merging the inner sequences).</li>
 	 * </ul>
 	 * The concurrency argument allows to control how many {@link Publisher} can be
-	 * subscribed to and merged in parallel.
+	 * subscribed to and merged in parallel. In turn, that argument shows the size of
+	 * the first {@link Subscription#request} to the upstream.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/flatmapc.png" alt="">
@@ -4343,8 +4350,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 *     (similar to merging the inner sequences).</li>
 	 * </ul>
 	 * The concurrency argument allows to control how many {@link Publisher} can be
-	 * subscribed to and merged in parallel. The prefetch argument allows to give an
-	 * arbitrary prefetch size to the merged {@link Publisher}.
+	 * subscribed to and merged in parallel. In turn, that argument shows the size of
+	 * the first {@link Subscription#request} to the upstream.
+	 * The prefetch argument allows to give an arbitrary prefetch size to the merged
+	 * {@link Publisher} (in other words prefetch size means the size of the first
+	 * {@link Subscription#request} to the merged {@link Publisher}).
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/flatmapc.png" alt="">
@@ -6022,8 +6032,9 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * Reduce the values from this {@link Flux} sequence into an single object of the same
 	 * type than the emitted items. Reduction is performed using a {@link BiFunction} that
 	 * takes the intermediate result of the reduction and the current value and returns
-	 * the next intermediate value of the reduction. It will ignore sequence with 0 or 1
-	 * elements.
+	 * the next intermediate value of the reduction. Note, {@link BiFunction} will not
+	 * be invoked for a sequence with 0 or 1 elements. In case of one element's
+	 * sequence, the result will be directly sent to the subscriber.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/aggregate.png" alt="">
@@ -7193,9 +7204,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * the last operator of a chain towards the first.
 	 * <p>
 	 * So this operator enriches a {@link Context} coming from under it in the chain
-	 * (downstream, by default an empty one) and passes the new enriched {@link Context}
-	 * to operators above it in the chain (upstream, by way of them using
-	 * {@code Flux#subscribe(Subscriber,Context)}).
+	 * (downstream, by default an empty one) and makes the new enriched {@link Context}
+	 * visible to operators above it in the chain.
 	 *
 	 * @param mergeContext the {@link Context} to merge with a previous {@link Context}
 	 * state, returning a new one.
@@ -7216,10 +7226,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * the last operator of a chain towards the first.
 	 * <p>
 	 * So this operator enriches a {@link Context} coming from under it in the chain
-	 * (downstream, by default an empty one) and passes the new enriched {@link Context}
-	 * to operators above it in the chain (upstream, by way of them using
-	 * {@code Flux#subscribe(Subscriber,Context)}).
-	 *
+	 * (downstream, by default an empty one) and makes the new enriched {@link Context}
+	 * visible to operators above it in the chain.
 	 *
 	 * @param doOnContext the function taking a previous {@link Context} state
 	 *  and returning a new one.
@@ -8120,6 +8128,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * Split this {@link Flux} sequence into multiple {@link Flux} windows delimited by the
 	 * given predicate. A new window is opened each time the predicate returns true, at which
 	 * point the previous window will receive the triggering element then onComplete.
+	 * <p>
+	 * Windows are lazily made available downstream at the point where they receive their
+	 * first event (an element is pushed, the window errors). This variant shouldn't
+	 * expose empty windows, as the separators are emitted into
+	 * the windows they close.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowuntil.png" alt="">
@@ -8136,15 +8149,18 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * Split this {@link Flux} sequence into multiple {@link Flux} windows delimited by the
 	 * given predicate. A new window is opened each time the predicate returns true.
 	 * <p>
+	 * Windows are lazily made available downstream at the point where they receive their
+	 * first event (an element is pushed, the window completes or errors).
+	 * <p>
 	 * If {@code cutBefore} is true, the old window will onComplete and the triggering
-	 * element will be emitted in the new window. Note it can mean that an empty window is
-	 * sometimes emitted, eg. if the first element in the sequence immediately matches the
-	 * predicate.
+	 * element will be emitted in the new window, which becomes immediately available.
+	 * This variant can emit an empty window if the sequence starts with a separator.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowuntilcutbefore.png" alt="">
 	 * <p>
 	 * Otherwise, the triggering element will be emitted in the old window before it does
-	 * onComplete, similar to {@link #windowUntil(Predicate)}.
+	 * onComplete, similar to {@link #windowUntil(Predicate)}. This variant shouldn't
+	 * expose empty windows, as the separators are emitted into the windows they close.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowuntilcutafter.png" alt="">
 	 *
@@ -8162,15 +8178,18 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * predicate and using a prefetch. A new window is opened each time the predicate
 	 * returns true.
 	 * <p>
+	 * Windows are lazily made available downstream at the point where they receive their
+	 * first event (an element is pushed, the window completes or errors).
+	 * <p>
 	 * If {@code cutBefore} is true, the old window will onComplete and the triggering
-	 * element will be emitted in the new window. Note it can mean that an empty window is
-	 * sometimes emitted, eg. if the first element in the sequence immediately matches the
-	 * predicate.
+	 * element will be emitted in the new window. This variant can emit an empty window
+	 * if the sequence starts with a separator.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowuntilcutbefore.png" alt="">
 	 * <p>
 	 * Otherwise, the triggering element will be emitted in the old window before it does
-	 * onComplete, similar to {@link #windowUntil(Predicate)}.
+	 * onComplete, similar to {@link #windowUntil(Predicate)}. This variant shouldn't
+	 * expose empty windows, as the separators are emitted into the windows they close.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowuntilcutafter.png" alt="">
 	 *
@@ -8194,9 +8213,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * while a given predicate matches the source elements. Once the predicate returns
 	 * false, the window closes with an onComplete and the triggering element is discarded.
 	 * <p>
-	 * Note that for a sequence starting with a separator, or having several subsequent
-	 * separators anywhere in the sequence, each occurrence will lead to an empty window.
-	 *
+	 * Windows are lazily made available downstream at the point where they receive their
+	 * first event (an element is pushed, the window completes or errors). Empty windows
+	 * can happen when a sequence starts with a separator or contains multiple separators,
+	 * but a sequence that finishes with a separator won't cause a remainder empty window
+	 * to be emitted.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowwhile.png" alt="">
 	 *
@@ -8213,9 +8234,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * while a given predicate matches the source elements. Once the predicate returns
 	 * false, the window closes with an onComplete and the triggering element is discarded.
 	 * <p>
-	 * Note that for a sequence starting with a separator, or having several subsequent
-	 * separators anywhere in the sequence, each occurrence will lead to an empty window.
-	 *
+	 * Windows are lazily made available downstream at the point where they receive their
+	 * first event (an element is pushed, the window completes or errors). Empty windows
+	 * can happen when a sequence starts with a separator or contains multiple separators,
+	 * but a sequence that finishes with a separator won't cause a remainder empty window
+	 * to be emitted.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.1.3.RELEASE/src/docs/marble/windowwhile.png" alt="">
 	 *

@@ -38,7 +38,6 @@ import java.util.function.Supplier;
 import reactor.core.CoreSubscriber;
 import reactor.core.Exceptions;
 import reactor.core.Fuseable;
-import reactor.core.Scannable;
 
 /**
  * Emits a generated {@link Throwable} instance to Subscribers, lazily generated via a
@@ -48,8 +47,7 @@ import reactor.core.Scannable;
  *
  * @see <a href="https://github.com/reactor/reactive-streams-commons">Reactive-Streams-Commons</a>
  */
-final class FluxErrorSupplied<T> extends Flux<T>
-		implements Fuseable.ScalarCallable, Scannable {
+final class FluxErrorSupplied<T> extends Flux<T> implements Fuseable.ScalarCallable, SourceProducer<T> {
 
 	final Supplier<Throwable> errorSupplier;
 
