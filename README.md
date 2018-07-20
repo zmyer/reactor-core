@@ -25,10 +25,10 @@ With Gradle from repo.spring.io or Maven Central repositories (stable releases o
     }
 
     dependencies {
-      //compile "io.projectreactor:reactor-core:3.1.4.RELEASE"
-      //testCompile("io.projectreactor:reactor-test:3.1.4.RELEASE")
-      compile "io.projectreactor:reactor-core:3.2.0.M1"
-      testCompile("io.projectreactor:reactor-test:3.2.0.M1")
+      //compile "io.projectreactor:reactor-core:3.1.8.RELEASE"
+      //testCompile("io.projectreactor:reactor-test:3.1.8.RELEASE")
+      compile "io.projectreactor:reactor-core:3.2.0.M2"
+      testCompile("io.projectreactor:reactor-test:3.2.0.M2")
     }
 ```
 
@@ -63,7 +63,7 @@ Flux.fromIterable(getSomeLongList())
     .doOnNext(serviceA::someObserver)
     .map(d -> d * 2)
     .take(3)
-    .onErrorResumeWith(errorHandler::fallback)
+    .onErrorResume(errorHandler::fallback)
     .doAfterTerminate(serviceM::incrementTerminate)
     .subscribe(System.out::println);
 ```

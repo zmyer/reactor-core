@@ -32,11 +32,14 @@ import org.reactivestreams.Subscription;
 import reactor.core.CoreSubscriber;
 import reactor.core.Exceptions;
 import reactor.core.Fuseable;
+import reactor.core.Fuseable.QueueSubscription;
 import reactor.core.Scannable;
 import reactor.util.Logger;
 import reactor.util.Loggers;
 import reactor.util.annotation.Nullable;
 import reactor.util.context.Context;
+
+import static reactor.core.Fuseable.NONE;
 
 /**
  * An helper to support "Operator" writing, handle noop subscriptions, validate request
@@ -95,9 +98,9 @@ public abstract class Operators {
 	 */
 	@SuppressWarnings("unchecked")
 	@Nullable
-	public static <T> Fuseable.QueueSubscription<T> as(Subscription s) {
-		if (s instanceof Fuseable.QueueSubscription) {
-			return (Fuseable.QueueSubscription<T>) s;
+	public static <T> QueueSubscription<T> as(Subscription s) {
+		if (s instanceof QueueSubscription) {
+			return (QueueSubscription<T>) s;
 		}
 		return null;
 	}
@@ -180,27 +183,42 @@ public abstract class Operators {
 	 * Create a function that can be used to support a custom operator via
 	 * {@link CoreSubscriber} decoration. The function is compatible with
 	 * {@link Flux#transform(Function)}, {@link Mono#transform(Function)},
-	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)}
+	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)},
+	 * but requires that the original {@link Publisher} be {@link Scannable}.
+	 * <p>
+	 * This variant attempts to expose the {@link Publisher} as a {@link Scannable} for
+	 * convenience of introspection. You should however avoid instanceof checks or any
+	 * other processing that depends on identity of the {@link Publisher}, as it might
+	 * get hidden if {@link Scannable#isScanAvailable()} returns {@code false}.
+	 * Use {@link #liftPublisher(BiFunction)} instead for that kind of use case.
 	 *
 	 * @param lifter the bifunction taking {@link Scannable} from the enclosing
-	 * publisher and consuming {@link CoreSubscriber}. It must return a receiving
-	 * {@link CoreSubscriber} that will immediately subscribe to the applied
-	 * {@link Publisher}.
+	 * publisher (assuming it is compatible) and consuming {@link CoreSubscriber}.
+	 * It must return a receiving {@link CoreSubscriber} that will immediately subscribe
+	 * to the applied {@link Publisher}.
 	 *
 	 * @param <I> the input type
 	 * @param <O> the output type
 	 *
 	 * @return a new {@link Function}
+	 * @see #liftPublisher(BiFunction)
 	 */
 	public static <I, O> Function<? super Publisher<I>, ? extends Publisher<O>> lift(BiFunction<Scannable, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>> lifter) {
-		return new LiftFunction<>(null, lifter);
+		return LiftFunction.liftScannable(null, lifter);
 	}
 
 	/**
 	 * Create a function that can be used to support a custom operator via
 	 * {@link CoreSubscriber} decoration. The function is compatible with
 	 * {@link Flux#transform(Function)}, {@link Mono#transform(Function)},
-	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)}
+	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)},
+	 * but requires that the original {@link Publisher} be {@link Scannable}.
+	 * <p>
+	 * This variant attempts to expose the {@link Publisher} as a {@link Scannable} for
+	 * convenience of introspection. You should however avoid instanceof checks or any
+	 * other processing that depends on identity of the {@link Publisher}, as it might
+	 * get hidden if {@link Scannable#isScanAvailable()} returns {@code false}.
+	 * Use {@link #liftPublisher(Predicate, BiFunction)} instead for that kind of use case.
 	 *
 	 * <p>
 	 *     The function will be invoked only if the passed {@link Predicate} matches.
@@ -208,20 +226,76 @@ public abstract class Operators {
 	 *     unmatched predicate will return the applied {@link Publisher}.
 	 *
 	 * @param filter the predicate to match taking {@link Scannable} from the applied
-	 * publisher to operate on
+	 * publisher to operate on. Assumes original is scan-compatible.
 	 * @param lifter the bifunction taking {@link Scannable} from the enclosing
 	 * publisher and consuming {@link CoreSubscriber}. It must return a receiving
 	 * {@link CoreSubscriber} that will immediately subscribe to the applied
-	 * {@link Publisher}.
+	 * {@link Publisher}. Assumes the original is scan-compatible.
+	 *
+	 * @param <O> the input and output type
+	 *
+	 * @return a new {@link Function}
+	 * @see #liftPublisher(Predicate, BiFunction)
+	 */
+	public static <O> Function<? super Publisher<O>, ? extends Publisher<O>> lift(
+			Predicate<Scannable> filter,
+			BiFunction<Scannable, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super O>> lifter) {
+		return LiftFunction.liftScannable(filter, lifter);
+	}
+
+	/**
+	 * Create a function that can be used to support a custom operator via
+	 * {@link CoreSubscriber} decoration. The function is compatible with
+	 * {@link Flux#transform(Function)}, {@link Mono#transform(Function)},
+	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)},
+	 * and works with the raw {@link Publisher} as input, which is useful if you need to
+	 * detect the precise type of the source (eg. instanceof checks to detect Mono, Flux,
+	 * true Scannable, etc...).
+	 *
+	 * @param lifter the bifunction taking the raw {@link Publisher} and
+	 * {@link CoreSubscriber}. The publisher can be double-checked (including with
+	 * {@code instanceof}, and the function must return a receiving {@link CoreSubscriber}
+	 * that will immediately subscribe to the {@link Publisher}.
+	 *
+	 * @param <I> the input type
+	 * @param <O> the output type
+	 *
+	 * @return a new {@link Function}
+	 */
+	public static <I, O> Function<? super Publisher<I>, ? extends Publisher<O>> liftPublisher(
+			BiFunction<Publisher, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>> lifter) {
+		return LiftFunction.liftPublisher(null, lifter);
+	}
+
+	/**
+	 * Create a function that can be used to support a custom operator via
+	 * {@link CoreSubscriber} decoration. The function is compatible with
+	 * {@link Flux#transform(Function)}, {@link Mono#transform(Function)},
+	 * {@link Hooks#onEachOperator(Function)} and {@link Hooks#onLastOperator(Function)},
+	 * and works with the raw {@link Publisher} as input, which is useful if you need to
+	 * 	 * detect the precise type of the source (eg. instanceof checks to detect Mono, Flux,
+	 * 	 * true Scannable, etc...).
+	 *
+	 * <p>
+	 *     The function will be invoked only if the passed {@link Predicate} matches.
+	 *     Therefore the transformed type O must be the same than the input type since
+	 *     unmatched predicate will return the applied {@link Publisher}.
+	 *
+	 * @param filter the {@link Predicate} that the raw {@link Publisher} must pass for
+	 * the transformation to occur
+	 * @param lifter the {@link BiFunction} taking the raw {@link Publisher} and
+	 * {@link CoreSubscriber}. The publisher can be double-checked (including with
+	 * {@code instanceof}, and the function must return a receiving {@link CoreSubscriber}
+	 * that will immediately subscribe to the {@link Publisher}.
 	 *
 	 * @param <O> the input and output type
 	 *
 	 * @return a new {@link Function}
 	 */
-	public static <O> Function<? super Publisher<O>, ? extends Publisher<O>> lift(
-			Predicate<Scannable> filter,
-			BiFunction<Scannable, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super O>> lifter) {
-		return new LiftFunction<>(filter, lifter);
+	public static <O> Function<? super Publisher<O>, ? extends Publisher<O>> liftPublisher(
+			Predicate<Publisher> filter,
+			BiFunction<Publisher, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super O>> lifter) {
+		return LiftFunction.liftPublisher(filter, lifter);
 	}
 
 	/**
@@ -719,7 +793,7 @@ public abstract class Operators {
 	 * @param <F> the instance type containing the field
 	 * @param field the field accessor
 	 * @param instance the parent instance
-	 * @param s the subscription to push once
+	 * @param s the subscription to set once
 	 * @return true if successful, false if the target was not empty or has been cancelled
 	 */
 	public static <F> boolean setOnce(AtomicReferenceFieldUpdater<F, Subscription> field, F instance, Subscription s) {
@@ -790,7 +864,7 @@ public abstract class Operators {
 	}
 
 	/**
-	 * Check Subscription current state and cancel new Subscription if current is push,
+	 * Check Subscription current state and cancel new Subscription if current is set,
 	 * or return true if ready to subscribe.
 	 *
 	 * @param current current Subscription, expected to be null
@@ -991,7 +1065,7 @@ public abstract class Operators {
 
 	}
 
-	final static class EmptySubscription implements Fuseable.QueueSubscription<Object>, Scannable {
+	final static class EmptySubscription implements QueueSubscription<Object>, Scannable {
 		static final EmptySubscription INSTANCE = new EmptySubscription();
 
 		@Override
@@ -1022,7 +1096,7 @@ public abstract class Operators {
 
 		@Override
 		public int requestFusion(int requestedMode) {
-			return Fuseable.NONE; // can't enable fusion due to complete/error possibility
+			return NONE; // can't enable fusion due to complete/error possibility
 		}
 
 		@Override
@@ -1098,8 +1172,8 @@ public abstract class Operators {
 		/**
 		 * Atomically sets the single subscription and requests the missed amount from it.
 		 *
-		 * @param s the subscription to push
-		 * @return false if this arbiter is cancelled or there was a subscription already push
+		 * @param s the subscription to set
+		 * @return false if this arbiter is cancelled or there was a subscription already set
 		 */
 		public final boolean set(Subscription s) {
 			Objects.requireNonNull(s, "s");
@@ -1154,7 +1228,7 @@ public abstract class Operators {
 	public static class MonoSubscriber<I, O>
 			implements InnerOperator<I, O>,
 			           Fuseable, //for constants only
-			           Fuseable.QueueSubscription<O> {
+			           QueueSubscription<O> {
 
 		protected final CoreSubscriber<? super O> actual;
 
@@ -1208,7 +1282,7 @@ public abstract class Operators {
 					return;
 				}
 
-				// if state is >= HAS_CANCELLED or bit zero is push (*_HAS_VALUE) case, return
+				// if state is >= HAS_CANCELLED or bit zero is set (*_HAS_VALUE) case, return
 				if ((state & ~HAS_REQUEST_NO_VALUE) != 0) {
 					return;
 				}
@@ -1290,7 +1364,7 @@ public abstract class Operators {
 			if (validate(n)) {
 				for (; ; ) {
 					int s = state;
-					// if the any bits 1-31 are push, we are either in fusion mode (FUSED_*)
+					// if the any bits 1-31 are set, we are either in fusion mode (FUSED_*)
 					// or request has been called (HAS_REQUEST_*)
 					if ((s & ~NO_REQUEST_HAS_VALUE) != 0) {
 						return;
@@ -1380,7 +1454,7 @@ public abstract class Operators {
 
 	/**
 	 * A subscription implementation that arbitrates request amounts between subsequent Subscriptions, including the
-	 * duration until the first Subscription is push.
+	 * duration until the first Subscription is set.
 	 * <p>
 	 * The class is thread safe but switching Subscriptions should happen only when the source associated with the current
 	 * Subscription has finished emitting values. Otherwise, two sources may emit for one request.
@@ -1398,7 +1472,7 @@ public abstract class Operators {
 
 		protected boolean unbounded;
 		/**
-		 * The current subscription which may null if no Subscriptions have been push.
+		 * The current subscription which may null if no Subscriptions have been set.
 		 */
 		Subscription subscription;
 		/**
@@ -1601,7 +1675,7 @@ public abstract class Operators {
 		}
 
 		/**
-		 * When setting a new subscription via push(), should
+		 * When setting a new subscription via set(), should
 		 * the previous subscription be cancelled?
 		 * @return true if cancellation is needed
 		 */
@@ -1827,14 +1901,35 @@ public abstract class Operators {
 	final static class LiftFunction<I, O>
 			implements Function<Publisher<I>, Publisher<O>> {
 
-		final Predicate<Scannable> filter;
+		final Predicate<Publisher> filter;
 
-		final BiFunction<Scannable, ? super CoreSubscriber<? super O>,
+		final BiFunction<Publisher, ? super CoreSubscriber<? super O>,
 				? extends CoreSubscriber<? super I>> lifter;
 
-		LiftFunction(@Nullable Predicate<Scannable> filter,
-				BiFunction<Scannable, ? super CoreSubscriber<? super O>,
-				? extends CoreSubscriber<? super I>> lifter) {
+		static final <I, O> LiftFunction<I, O> liftScannable(
+				@Nullable Predicate<Scannable> filter,
+				BiFunction<Scannable, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>> lifter) {
+			Objects.requireNonNull(lifter, "lifter");
+
+			Predicate<Publisher> effectiveFilter =  null;
+			if (filter != null) {
+				effectiveFilter = pub -> filter.test(Scannable.from(pub));
+			}
+
+			BiFunction<Publisher, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>>
+					effectiveLifter = (pub, sub) -> lifter.apply(Scannable.from(pub), sub);
+
+			return new LiftFunction<>(effectiveFilter, effectiveLifter);
+		}
+
+		static final <I, O> LiftFunction<I, O> liftPublisher(
+				@Nullable Predicate<Publisher> filter,
+				BiFunction<Publisher, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>> lifter) {
+			return new LiftFunction<>(filter, Objects.requireNonNull(lifter, "lifter"));
+		}
+
+		private LiftFunction(@Nullable Predicate<Publisher> filter,
+				BiFunction<Publisher, ? super CoreSubscriber<? super O>, ? extends CoreSubscriber<? super I>> lifter) {
 			this.filter = filter;
 			this.lifter = Objects.requireNonNull(lifter, "lifter");
 		}
@@ -1842,17 +1937,40 @@ public abstract class Operators {
 		@Override
 		@SuppressWarnings("unchecked")
 		public Publisher<O> apply(Publisher<I> publisher) {
-			if (filter != null && !filter.test(Scannable.from(publisher))) {
+			if (filter != null && !filter.test(publisher)) {
 				return (Publisher<O>)publisher;
 			}
-			if (publisher instanceof Mono) {
-				return new MonoLift<>(publisher, lifter);
-			}
-			if (publisher instanceof ParallelFlux) {
-				return new ParallelLift<>((ParallelFlux<I>)publisher, lifter);
-			}
 
-			return new FluxLift<>(publisher, lifter);
+			if (publisher instanceof Fuseable) {
+				if (publisher instanceof Mono) {
+					return new MonoLiftFuseable<>(publisher, lifter);
+				}
+				if (publisher instanceof ParallelFlux) {
+					return new ParallelLiftFuseable<>((ParallelFlux<I>)publisher, lifter);
+				}
+				if (publisher instanceof ConnectableFlux) {
+					return new ConnectableLiftFuseable<>((ConnectableFlux<I>) publisher, lifter);
+				}
+				if (publisher instanceof GroupedFlux) {
+					return new GroupedLiftFuseable<>((GroupedFlux<?, I>) publisher, lifter);
+				}
+				return new FluxLiftFuseable<>(publisher, lifter);
+			}
+			else {
+				if (publisher instanceof Mono) {
+					return new MonoLift<>(publisher, lifter);
+				}
+				if (publisher instanceof ParallelFlux) {
+					return new ParallelLift<>((ParallelFlux<I>)publisher, lifter);
+				}
+				if (publisher instanceof ConnectableFlux) {
+					return new ConnectableLift<>((ConnectableFlux<I>) publisher, lifter);
+				}
+				if (publisher instanceof GroupedFlux) {
+					return new GroupedLift<>((GroupedFlux<?, I>) publisher, lifter);
+				}
+				return new FluxLift<>(publisher, lifter);
+			}
 		}
 	}
 

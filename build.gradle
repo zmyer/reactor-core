@@ -17,23 +17,25 @@ import me.champeau.gradle.japicmp.JapicmpTask
 import org.gradle.api.internal.plugins.osgi.OsgiHelper
 
 buildscript {
-  ext.kotlinVersion = '1.1.61'
+  ext.kotlinVersion = '1.2.51'
   repositories {
 	maven { url "http://repo.spring.io/plugins-release" }
   }
   dependencies {
-	classpath 'org.springframework.build.gradle:propdeps-plugin:0.0.7',
-			'io.spring.gradle:spring-io-plugin:0.0.4.RELEASE',
-			'com.github.jengelman.gradle.plugins:shadow:1.2.0',
-			'org.asciidoctor:asciidoctorj-pdf:1.5.0-alpha.11',
-			"org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
+	classpath 'org.springframework.build.gradle:propdeps-plugin:0.0.7'
+	classpath 'io.spring.gradle:spring-io-plugin:0.0.4.RELEASE'
+	classpath 'com.github.jengelman.gradle.plugins:shadow:1.2.0'
+	classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
+	classpath 'org.jruby:jruby-complete:9.1.17.0'
+	classpath 'org.asciidoctor:asciidoctor-gradle-plugin:1.5.7'
+	classpath 'org.asciidoctor:asciidoctorj-pdf:1.5.0-alpha.16'
   }
 }
 
 plugins {
   id 'org.asciidoctor.convert' version '1.5.6'
   id "me.champeau.gradle.jmh" version "0.4.4" apply false
-  id "org.jetbrains.dokka" version "0.9.15"
+  id "org.jetbrains.dokka" version "0.9.16"
   id "me.champeau.gradle.japicmp" version "0.2.6"
 }
 
@@ -50,6 +52,9 @@ ext {
 	  project.version = realVersion
 	}
   }
+
+  // Metrics
+  micrometerVersion = 'latest.release' //TODO specify a version of micrometer?
 
   // Logging
   slf4jVersion = '1.7.12'
@@ -249,6 +254,9 @@ project('reactor-core') {
 	//Optional Logging Operator
 	optional "org.slf4j:slf4j-api:$slf4jVersion"
 
+	//Optional Metrics
+	optional "io.micrometer:micrometer-core:$micrometerVersion"
+
 	optional("org.jetbrains.kotlin:kotlin-stdlib:${kotlinVersion}")
 
 	//Optional JDK 9 Converter
@@ -257,6 +265,7 @@ project('reactor-core') {
 	testCompile 'junit:junit:4.12'
 
 	testRuntime "ch.qos.logback:logback-classic:$logbackVersion"
+	testRuntime "io.micrometer:micrometer-core:$micrometerVersion"
 	// Testing
 	testCompile(project(":reactor-test")) {
 	  exclude module: 'reactor-core'
@@ -413,8 +422,7 @@ project('reactor-core') {
 	archives sourcesJar
 	archives javadocJar
 	archives docsZip
-	if (!JavaVersion.current().isJava9Compatible())
-	  archives kdocZip
+	archives kdocZip
   }
 
   jacocoTestReport.dependsOn test
@@ -533,8 +541,7 @@ project('reactor-test') {
   }
 
   artifacts {
-	if (!JavaVersion.current().isJava9Compatible())
-	  archives kdocZip
+	archives kdocZip
   }
 
   jar.finalizedBy(japicmp)
